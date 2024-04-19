@@ -9,6 +9,82 @@ from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 
 
+def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
+    """
+    Function to fit a feature using the Levenberg-Marquardt algorithm as initial guess and MCMC fitting for refining
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the output of the MCMC fitting
+
+    star : string
+        Star name
+
+    model : astropy model
+        Initial model to fit to the data
+
+    waves : astropy Table Column
+        Wavelengths to fit
+
+    taus : astropy Table Column
+        Optical depths to fit
+
+    uncs : numpy.ndarray
+        Uncertainties to use in the fit
+
+    feat_name : string
+        Reference name for the feature
+
+    Returns
+    -------
+    fit_result_feat_emcee : astropy model
+        MCMC fitting results
+
+    chains : numpy.ndarray
+        MCMC chains (for amplitude, mean and stddev in that order)
+    """
+    # fit the feature with the LevMarLSQFitter
+    lev_fitter = fitting.LevMarLSQFitter()
+    fit_result_feat_lev = lev_fitter(
+        model,
+        waves,
+        taus,
+        weights=1 / uncs,
+        maxiter=10000,
+        filter_non_finite=True,
+    )
+
+    # fit the feature again with MCMC
+    emcee_samples_file = (
+        outpath + "Fitting_results/" + star + "_chains_" + feat_name + ".h5"
+    )
+    nsteps = 5000
+    burn = 0.1
+    emcee_fitter = EmceeFitter(
+        nsteps=nsteps, burnfrac=burn, save_samples=emcee_samples_file
+    )
+    fit_result_feat_emcee = emcee_fitter(
+        fit_result_feat_lev,
+        waves,
+        taus,
+        weights=1 / uncs,
+    )
+
+    # obtain the MCMC chains
+    chains = emcee_fitter.fit_info["sampler"].get_chain(
+        flat=True, discard=np.int32(burn * nsteps)
+    )
+
+    # plot the MCMC fitting results
+    emcee_fitter.plot_emcee_results(
+        fit_result_feat_emcee,
+        filebase=outpath + "Fitting_results/" + star + "_" + feat_name,
+    )
+
+    return fit_result_feat_emcee, chains
+
+
 def fit_58(datapath, outpath, star):
     """
     Function to fit the continuum and the feature at 5.8 micron
@@ -21,7 +97,7 @@ def fit_58(datapath, outpath, star):
     outpath : string
         Path to store the output plots
 
-    stars : string
+    star : string
         Star name
 
     Returns
@@ -79,10 +155,10 @@ def fit_58(datapath, outpath, star):
     )
 
     # convert to optical depth (only exists in rangemask)
-    tau = np.log(1 / norm_fluxes)
+    taus = np.log(1 / norm_fluxes)
 
     # calculate the empirical uncertainy on the optical depth in clean regions
-    unc = np.std(tau[cont_mask[rangemask]])
+    unc = np.std(taus[cont_mask[rangemask]])
 
     # mask the stellar lines inside the feature and define the mask for the feature fitting
     stellar_lines_in = ((waves > 5.703) & (waves <= 5.717)) | (
@@ -92,12 +168,12 @@ def fit_58(datapath, outpath, star):
     # 5.705-5.717, 5.706-5.715, 5.703-716, 5.712-5.717, 5.711-5.717
     # 5.823-5.831, 5.824-5.836, 5.827-5.839, 5.829-5.841, 5.825-5.836, 5.823-5.840
     feat_full_mask = feat_reg_mask & ~stellar_lines_in
-    feat_fit_mask = feat_full_mask[rangemask] & ~np.isnan(tau)
+    feat_fit_mask = feat_full_mask[rangemask] & ~np.isnan(taus)
 
     # define the uncertainties
-    uncs = np.full(len(tau[feat_fit_mask]), unc)
+    uncs = np.full(len(taus[feat_fit_mask]), unc)
 
-    # fit the feature with the LevMarLSQFitter
+    # define the initial model to fit the feature
     gauss_mod = models.Gaussian1D(
         amplitude=0.01,
         stddev=0.02,
@@ -107,44 +183,19 @@ def fit_58(datapath, outpath, star):
             "stddev": (1e-4, 0.15),
         },
     )
-    lev_fitter = fitting.LevMarLSQFitter()
-    fit_result_feat_lev = lev_fitter(
+    # fit the feature
+    fit_result_feat_emcee, chains = fit_feature(
+        outpath,
+        star,
         gauss_mod,
         waves[rangemask][feat_fit_mask],
-        tau[feat_fit_mask],
-        weights=1.0 / uncs,
-        maxiter=10000,
-        filter_non_finite=True,
-    )
-
-    # fit the feature again with MCMC
-    emcee_samples_file = outpath + "Fitting_results/" + star + "_chains_58.h5"
-    nsteps = 5000
-    burn = 0.1
-    emcee_fitter = EmceeFitter(
-        nsteps=nsteps, burnfrac=burn, save_samples=emcee_samples_file
-    )
-    fit_result_feat_emcee = emcee_fitter(
-        fit_result_feat_lev,
-        waves[rangemask][feat_fit_mask],
-        tau[feat_fit_mask],
-        weights=1.0 / uncs,
-    )
-
-    # obtain the MCMC chains
-    chains = emcee_fitter.fit_info["sampler"].get_chain(
-        flat=True, discard=np.int32(burn * nsteps)
-    )
-
-    # plot the MCMC fitting results
-    emcee_fitter.plot_emcee_results(
-        fit_result_feat_emcee,
-        filebase=outpath + "Fitting_results/" + star + "_58",
+        taus[feat_fit_mask],
+        uncs,
+        "58",
     )
 
     # plot the feature fits
-    axes[1].plot(waves[rangemask], tau)
-    axes[1].plot(waves[rangemask], fit_result_feat_lev(waves[rangemask]), c="green")
+    axes[1].plot(waves[rangemask], taus)
     axes[1].plot(waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="pink")
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
@@ -288,7 +339,7 @@ def fit_10(datapath, outpath, star):
     outpath : string
         Path to store the output plots
 
-    stars : string
+    star : string
         Star name
 
     Returns
@@ -350,10 +401,10 @@ def fit_10(datapath, outpath, star):
     )
 
     # convert to optical depth (only exists in rangemask)
-    tau = np.log(1 / norm_fluxes)
+    taus = np.log(1 / norm_fluxes)
 
     # calculate the empirical uncertainy on the optical depth in clean regions
-    unc = np.std(tau[cont_mask[rangemask]])
+    unc = np.std(taus[cont_mask[rangemask]])
 
     # mask the stellar lines inside the feature and define the mask for the feature fitting
     stellar_lines_in = (
@@ -370,12 +421,12 @@ def fit_10(datapath, outpath, star):
     # 11.285-11.321, 11.266-11.314, 11.251-11.373, 11.296-11.314
     # 12.352-12.424, 12.355-12.384, 12.312-12.429, 12.357-12.415, 12.312-12.445, 12.354-12.402, 12.355-12.381
     feat_full_mask = feat_reg_mask & ~stellar_lines_in
-    feat_fit_mask = feat_full_mask[rangemask] & ~np.isnan(tau)
+    feat_fit_mask = feat_full_mask[rangemask] & ~np.isnan(taus)
 
     # define the uncertainties
-    uncs = np.full(len(tau[feat_fit_mask]), unc)
+    uncs = np.full(len(taus[feat_fit_mask]), unc)
 
-    # fit the feature with the LevMarLSQFitter
+    # define the initial model to fit the feature
     gauss_mod = models.Gaussian1D(
         amplitude=0.1,
         stddev=1,
@@ -384,44 +435,19 @@ def fit_10(datapath, outpath, star):
             "mean": (9.5, 10.5),
         },
     )
-    lev_fitter = fitting.LevMarLSQFitter()
-    fit_result_feat_lev = lev_fitter(
+    # fit the feature
+    fit_result_feat_emcee, chains = fit_feature(
+        outpath,
+        star,
         gauss_mod,
         waves[rangemask][feat_fit_mask],
-        tau[feat_fit_mask],
-        weights=1.0 / uncs,
-        maxiter=10000,
-        filter_non_finite=True,
-    )
-
-    # fit the feature again with MCMC
-    emcee_samples_file = outpath + "Fitting_results/" + star + "_chains_10.h5"
-    nsteps = 5000
-    burn = 0.1
-    emcee_fitter = EmceeFitter(
-        nsteps=nsteps, burnfrac=burn, save_samples=emcee_samples_file
-    )
-    fit_result_feat_emcee = emcee_fitter(
-        fit_result_feat_lev,
-        waves[rangemask][feat_fit_mask],
-        tau[feat_fit_mask],
-        weights=1.0 / uncs,
-    )
-
-    # obtain the MCMC chains
-    chains = emcee_fitter.fit_info["sampler"].get_chain(
-        flat=True, discard=np.int32(burn * nsteps)
-    )
-
-    # plot the MCMC fitting results
-    emcee_fitter.plot_emcee_results(
-        fit_result_feat_emcee,
-        filebase=outpath + "Fitting_results/" + star + "_10",
+        taus[feat_fit_mask],
+        uncs,
+        "10",
     )
 
     # plot the feature fits
-    axes[1].plot(waves[rangemask], tau)
-    axes[1].plot(waves[rangemask], fit_result_feat_lev(waves[rangemask]), c="green")
+    axes[1].plot(waves[rangemask], taus)
     axes[1].plot(waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="pink")
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
