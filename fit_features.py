@@ -85,7 +85,7 @@ def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
     return fit_result_feat_emcee, chains
 
 
-def fit_58(datapath, outpath, star):
+def fit_58(datapath, star):
     """
     Function to fit the continuum and the feature at 5.8 micron
 
@@ -93,9 +93,6 @@ def fit_58(datapath, outpath, star):
     ----------
     datapath : string
         Path to the data files
-
-    outpath : string
-        Path to store the output plots
 
     star : string
         Star name
@@ -112,7 +109,7 @@ def fit_58(datapath, outpath, star):
     """
     # obtain the data
     starname = "hd" + star.split("D")[1].strip("0")
-    data = Table.read(datapath + starname + "_nircam_mrs_merged.fits")
+    data = Table.read(datapath + "MIRI/v3/" + starname + "_nircam_mrs_merged.fits")
     waves = data["wavelength"]
     fluxes = data["flux"]
 
@@ -201,7 +198,7 @@ def fit_58(datapath, outpath, star):
     )
     # fit the feature
     fit_result_feat_emcee, chains = fit_feature(
-        outpath,
+        datapath + "MIRI/",
         star,
         gauss_mod,
         waves[rangemask][feat_fit_mask],
@@ -218,134 +215,12 @@ def fit_58(datapath, outpath, star):
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
     axes[1].axhline(ls=":", c="k")
-    plt.savefig(outpath + star + "_58_fit.pdf", bbox_inches="tight")
+    plt.savefig(datapath + star + "_58_fit.pdf", bbox_inches="tight")
 
     return fit_result_feat_emcee, chains
 
 
-def fit_all_58(datapath, outpath, stars, ext_table):
-    """
-    Fit the 5.8 micron feature for all stars
-
-    Parameters
-    ----------
-    datapath : string
-        Path to the data files
-
-    outpath : string
-        Path to store the output plots and tables
-
-    stars : list
-        Star names
-
-    ext_table : Astropy Table
-        Table with extinction measurements
-
-    Returns
-    -------
-    Tables with fitting results
-    """
-    # create a table to store the results
-    result_tab = Table(
-        names=(
-            "name",
-            "amplitude",
-            "amplitude_unc_min",
-            "amplitude_unc_plus",
-            "wavelength(micron)",
-            "wavelength_unc_min(micron)",
-            "wavelength_unc_plus(micron)",
-            "std(micron)",
-            "std_unc_min(micron)",
-            "std_unc_plus(micron)",
-            "area(cm-1)",
-            "area_unc_min(cm-1)",
-            "area_unc_plus(cm-1)",
-            "A(V)",
-            "R(V)",
-        ),
-        dtype=(
-            "str",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-        ),
-    )
-
-    # fit the 5.8 micron feature for all stars
-    for star in stars:
-        fit_result, chains = fit_58(datapath, outpath, star)
-
-        # obtain the results
-        amp = fit_result.amplitude.value
-        amp_unc_plus = fit_result.amplitude.unc_plus
-        amp_unc_min = fit_result.amplitude.unc_minus
-        amp_unc = fit_result.amplitude.unc
-        mean = fit_result.mean.value
-        mean_unc_plus = fit_result.mean.unc_plus
-        mean_unc_min = fit_result.mean.unc_minus
-        mean_unc = fit_result.mean.unc
-        stddev = fit_result.stddev.value
-        stddev_unc_plus = fit_result.stddev.unc_plus
-        stddev_unc_min = fit_result.stddev.unc_minus
-        stddev_unc = fit_result.stddev.unc
-
-        # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
-        # dnu = 1/(lambda**2) * dlambda * 1e4
-        # lambda = mean = chains[:,1]
-        # dlambda = stddev = chains[:,2]
-        stddev_wavenm = 1.0 / (chains[:, 1] ** 2) * chains[:, 2] * 1e4
-
-        # calculate the integrated area (in cm^-1)
-        # area = amplitude * stddev (in cm^-1)* sqrt(2 * pi)
-        # amplitude = chains[:,0]
-        area_chain = chains[:, 0] * stddev_wavenm * np.sqrt(2 * np.pi)
-        area16, area, area84 = np.percentile(area_chain, [16, 50, 84])
-        area_unc_min = area - area16
-        area_unc_plus = area84 - area
-
-        # obtain A(V) and R(V)
-        mask = ext_table["Name"] == star
-        AV = ext_table[mask]["AV"]
-        RV = ext_table[mask]["RV"]
-
-        # add the results to a table
-        result_tab.add_row(
-            (
-                star,
-                amp,
-                amp_unc_min,
-                amp_unc_plus,
-                mean,
-                mean_unc_min,
-                mean_unc_plus,
-                stddev,
-                stddev_unc_min,
-                stddev_unc_plus,
-                area,
-                area_unc_min,
-                area_unc_plus,
-                AV,
-                RV,
-            )
-        )
-
-    # write the table to a file
-    result_tab.write(outpath + "fit_results_58.txt", format="ascii", overwrite=True)
-
-
-def fit_10(datapath, outpath, star):
+def fit_10(datapath, star):
     """
     Function to fit the continuum and the feature at 10 micron
 
@@ -353,9 +228,6 @@ def fit_10(datapath, outpath, star):
     ----------
     datapath : string
         Path to the data files
-
-    outpath : string
-        Path to store the output plots
 
     star : string
         Star name
@@ -372,7 +244,7 @@ def fit_10(datapath, outpath, star):
     """
     # obtain the data
     starname = "hd" + star.split("D")[1].strip("0")
-    data = Table.read(datapath + starname + "_nircam_mrs_merged.fits")
+    data = Table.read(datapath + "MIRI/v3/" + starname + "_nircam_mrs_merged.fits")
     waves = data["wavelength"]
     fluxes = data["flux"]
 
@@ -470,7 +342,7 @@ def fit_10(datapath, outpath, star):
     )
     # fit the feature
     fit_result_feat_emcee, chains = fit_feature(
-        outpath,
+        datapath + "MIRI/",
         star,
         gauss_mod,
         waves[rangemask][feat_fit_mask],
@@ -487,22 +359,19 @@ def fit_10(datapath, outpath, star):
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
     axes[1].axhline(ls=":", c="k")
-    plt.savefig(outpath + star + "_10_fit.pdf", bbox_inches="tight")
+    plt.savefig(datapath + star + "_10_fit.pdf", bbox_inches="tight")
 
     return fit_result_feat_emcee, chains
 
 
-def fit_all_10(datapath, outpath, stars, ext_table):
+def fit_all(datapath, stars, ext_table):
     """
-    Fit the 10 micron feature for all stars
+    Fit all features for all stars
 
     Parameters
     ----------
     datapath : string
         Path to the data files
-
-    outpath : string
-        Path to store the output plots and tables
 
     stars : list
         Star names
@@ -512,106 +381,115 @@ def fit_all_10(datapath, outpath, stars, ext_table):
 
     Returns
     -------
-    Tables with fitting results
+    Saves tables with fitting results
     """
-    # create a table to store the results
-    result_tab = Table(
-        names=(
-            "name",
-            "amplitude",
-            "amplitude_unc_min",
-            "amplitude_unc_plus",
-            "wavelength(micron)",
-            "wavelength_unc_min(micron)",
-            "wavelength_unc_plus(micron)",
-            "std(micron)",
-            "std_unc_min(micron)",
-            "std_unc_plus(micron)",
-            "area(cm-1)",
-            "area_unc_min(cm-1)",
-            "area_unc_plus(cm-1)",
-            "A(V)",
-            "R(V)",
-        ),
-        dtype=(
-            "str",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-            "float64",
-        ),
-    )
+    # list the features to be fitted
+    features = ["58", "10"]
 
-    # fit the 10 micron feature for all stars
-    for star in stars:
-        fit_result, chains = fit_10(datapath, outpath, star)
-
-        # obtain the results
-        amp = fit_result.amplitude.value
-        amp_unc_plus = fit_result.amplitude.unc_plus
-        amp_unc_min = fit_result.amplitude.unc_minus
-        amp_unc = fit_result.amplitude.unc
-        mean = fit_result.mean.value
-        mean_unc_plus = fit_result.mean.unc_plus
-        mean_unc_min = fit_result.mean.unc_minus
-        mean_unc = fit_result.mean.unc
-        stddev = fit_result.stddev.value
-        stddev_unc_plus = fit_result.stddev.unc_plus
-        stddev_unc_min = fit_result.stddev.unc_minus
-        stddev_unc = fit_result.stddev.unc
-
-        # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
-        # dnu = 1/(lambda**2) * dlambda * 1e4
-        # lambda = mean = chains[:,1]
-        # dlambda = stddev = chains[:,2]
-        stddev_wavenm = 1.0 / (chains[:, 1] ** 2) * chains[:, 2] * 1e4
-
-        # calculate the integrated area (in cm^-1)
-        # area = amplitude * stddev (in cm^-1)* sqrt(2 * pi)
-        # amplitude = chains[:,0]
-        area_chain = chains[:, 0] * stddev_wavenm * np.sqrt(2 * np.pi)
-        area16, area, area84 = np.percentile(area_chain, [16, 50, 84])
-        area_unc_min = area - area16
-        area_unc_plus = area84 - area
-
-        # obtain A(V) and R(V)
-        mask = ext_table["Name"] == star
-        AV = ext_table[mask]["AV"]
-        RV = ext_table[mask]["RV"]
-
-        # add the results to a table
-        result_tab.add_row(
-            (
-                star,
-                amp,
-                amp_unc_min,
-                amp_unc_plus,
-                mean,
-                mean_unc_min,
-                mean_unc_plus,
-                stddev,
-                stddev_unc_min,
-                stddev_unc_plus,
-                area,
-                area_unc_min,
-                area_unc_plus,
-                AV,
-                RV,
-            )
+    for feat_name in features:
+        # create a table to store the results
+        result_tab = Table(
+            names=(
+                "name",
+                "amplitude",
+                "amplitude_unc_min",
+                "amplitude_unc_plus",
+                "wavelength(micron)",
+                "wavelength_unc_min(micron)",
+                "wavelength_unc_plus(micron)",
+                "std(micron)",
+                "std_unc_min(micron)",
+                "std_unc_plus(micron)",
+                "area(cm-1)",
+                "area_unc_min(cm-1)",
+                "area_unc_plus(cm-1)",
+                "A(V)",
+                "R(V)",
+            ),
+            dtype=(
+                "str",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+                "float64",
+            ),
         )
 
-    # write the table to a file
-    result_tab.write(outpath + "fit_results_10.txt", format="ascii", overwrite=True)
+        # fit the feature for all stars
+        for star in stars:
+            func = eval("fit_" + feat_name)
+            fit_result, chains = func(datapath, star)
+
+            # obtain the results
+            amp = fit_result.amplitude.value
+            amp_unc_plus = fit_result.amplitude.unc_plus
+            amp_unc_min = fit_result.amplitude.unc_minus
+            amp_unc = fit_result.amplitude.unc
+            mean = fit_result.mean.value
+            mean_unc_plus = fit_result.mean.unc_plus
+            mean_unc_min = fit_result.mean.unc_minus
+            mean_unc = fit_result.mean.unc
+            stddev = fit_result.stddev.value
+            stddev_unc_plus = fit_result.stddev.unc_plus
+            stddev_unc_min = fit_result.stddev.unc_minus
+            stddev_unc = fit_result.stddev.unc
+
+            # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
+            # dnu = 1/(lambda**2) * dlambda * 1e4
+            # lambda = mean = chains[:,1]
+            # dlambda = stddev = chains[:,2]
+            stddev_wavenm = 1.0 / (chains[:, 1] ** 2) * chains[:, 2] * 1e4
+
+            # calculate the integrated area (in cm^-1)
+            # area = amplitude * stddev (in cm^-1)* sqrt(2 * pi)
+            # amplitude = chains[:,0]
+            area_chain = chains[:, 0] * stddev_wavenm * np.sqrt(2 * np.pi)
+            area16, area, area84 = np.percentile(area_chain, [16, 50, 84])
+            area_unc_min = area - area16
+            area_unc_plus = area84 - area
+
+            # obtain A(V) and R(V)
+            mask = ext_table["Name"] == star
+            AV = ext_table[mask]["AV"]
+            RV = ext_table[mask]["RV"]
+
+            # add the results to a table
+            result_tab.add_row(
+                (
+                    star,
+                    amp,
+                    amp_unc_min,
+                    amp_unc_plus,
+                    mean,
+                    mean_unc_min,
+                    mean_unc_plus,
+                    stddev,
+                    stddev_unc_min,
+                    stddev_unc_plus,
+                    area,
+                    area_unc_min,
+                    area_unc_plus,
+                    AV,
+                    RV,
+                )
+            )
+
+        # write the table to a file
+        result_tab.write(
+            datapath + "fit_results_" + feat_name + ".txt",
+            format="ascii",
+            overwrite=True,
+        )
 
 
 def main():
@@ -621,7 +499,7 @@ def main():
     plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
 
     # define the data path
-    datapath = "/Users/mdecleir/Documents/MEAD/JWST_ext/"
+    datapath = "/Users/mdecleir/Documents/MEAD/extinction/JWST_data/"
 
     # list the stars
     stars = [
@@ -648,13 +526,12 @@ def main():
     # plt.show()
 
     # obtain the table with extinction properties
-    ext_table = Table.read(datapath + "Gordon+2009_tab2.dat", format="ascii")
+    ext_table = Table.read(
+        "/Users/mdecleir/Documents/MEAD/extinction/Gordon+2009_tab2.dat", format="ascii"
+    )
 
-    # fit the 5.8 micron feature for all stars
-    fit_all_58(datapath + "MIRI/v3/", datapath + "MIRI/", stars, ext_table)
-
-    # fit the 10 micron feature for all stars
-    fit_all_10(datapath + "MIRI/v3/", datapath + "MIRI/", stars, ext_table)
+    # fit all features for all stars
+    fit_all(datapath, stars, ext_table)
 
 
 if __name__ == "__main__":
