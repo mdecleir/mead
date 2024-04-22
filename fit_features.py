@@ -144,9 +144,25 @@ def fit_58(datapath, outpath, star):
         gridspec_kw={"hspace": 0},
     )
     fs = 18
-    axes[0].plot(waves[rangemask], fluxes[rangemask] * waves[rangemask] ** 2)
-    axes[0].scatter(waves[cont_mask], fluxes[cont_mask] * waves[cont_mask] ** 2, c="r")
-    axes[0].plot(waves[rangemask], fit_result_cont(waves[rangemask]))
+    axes[0].plot(
+        waves[rangemask], fluxes[rangemask] * waves[rangemask] ** 2, c="k", alpha=0.9
+    )
+    axes[0].plot(
+        waves[rangemask],
+        fit_result_cont(waves[rangemask]),
+        c="tab:orange",
+        label="cont. fit",
+    )
+
+    # plot the data points that were used in the continuum fitting
+    axes[0].plot(
+        waves[cont_mask],
+        fluxes[cont_mask] * waves[cont_mask] ** 2,
+        "r.",
+        markersize=8,
+        alpha=0.8,
+        label="fit points",
+    )
     axes[0].set_ylabel("flux (Jy)", fontsize=fs)
 
     # normalize the fluxes
@@ -195,8 +211,10 @@ def fit_58(datapath, outpath, star):
     )
 
     # plot the feature fits
-    axes[1].plot(waves[rangemask], taus)
-    axes[1].plot(waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="pink")
+    axes[1].plot(waves[rangemask], taus, c="k", alpha=0.9)
+    axes[1].plot(
+        waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="crimson", lw=2
+    )
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
     axes[1].axhline(ls=":", c="k")
@@ -232,8 +250,8 @@ def fit_all_58(datapath, outpath, stars, ext_table):
         names=(
             "name",
             "amplitude",
-            "amp_unc_min",
-            "amp_unc_plus",
+            "amplitude_unc_min",
+            "amplitude_unc_plus",
             "wavelength(micron)",
             "wavelength_unc_min(micron)",
             "wavelength_unc_plus(micron)",
@@ -390,9 +408,24 @@ def fit_10(datapath, outpath, star):
         gridspec_kw={"hspace": 0},
     )
     fs = 18
-    axes[0].plot(waves[rangemask], fluxes[rangemask] * waves[rangemask] ** 2)
-    axes[0].scatter(waves[cont_mask], fluxes[cont_mask] * waves[cont_mask] ** 2, c="r")
-    axes[0].plot(waves[rangemask], fit_result_cont(waves[rangemask]))
+    axes[0].plot(
+        waves[rangemask], fluxes[rangemask] * waves[rangemask] ** 2, c="k", alpha=0.9
+    )
+    axes[0].plot(
+        waves[rangemask],
+        fit_result_cont(waves[rangemask]),
+        c="tab:orange",
+        label="cont. fit",
+    )
+    # plot the data points that were used in the continuum fitting
+    axes[0].plot(
+        waves[cont_mask],
+        fluxes[cont_mask] * waves[cont_mask] ** 2,
+        "r.",
+        markersize=8,
+        alpha=0.8,
+        label="fit points",
+    )
     axes[0].set_ylabel("flux (Jy)", fontsize=fs)
 
     # normalize the fluxes
@@ -447,8 +480,10 @@ def fit_10(datapath, outpath, star):
     )
 
     # plot the feature fits
-    axes[1].plot(waves[rangemask], taus)
-    axes[1].plot(waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="pink")
+    axes[1].plot(waves[rangemask], taus, c="k", alpha=0.9)
+    axes[1].plot(
+        waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="crimson", lw=2
+    )
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
     axes[1].axhline(ls=":", c="k")
@@ -484,8 +519,8 @@ def fit_all_10(datapath, outpath, stars, ext_table):
         names=(
             "name",
             "amplitude",
-            "amp_unc_min",
-            "amp_unc_plus",
+            "amplitude_unc_min",
+            "amplitude_unc_plus",
             "wavelength(micron)",
             "wavelength_unc_min(micron)",
             "wavelength_unc_plus(micron)",
