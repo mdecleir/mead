@@ -65,29 +65,82 @@ def plot_feat_AV(outpath, feat_name, data):
     plt.savefig(outpath + feat_name + "_AV.pdf", bbox_inches="tight")
 
 
+def plot_feat_col(outpath, feat_name, data):
+    """
+    Function to plot the dust column densities vs. the integrated area of the feature
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    feat_name : string
+        Reference name for the feature
+
+    data : astropy Table
+        Data to plot
+
+    Returns
+    -------
+        Plot with dust column densities vs. the integrated area of the feature
+    """
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(3, figsize=(7, 8), sharex=True)
+
+    # plot elemental dust column densities vs. integrated area
+    elems = ["Mg", "Fe", "O"]
+    for elem, ax in zip(elems, axes.flat):
+        ax.errorbar(
+            data["area(cm-1)"],
+            data["N(" + elem + ")_d"],
+            xerr=[data["area_unc_min(cm-1)"], data["area_unc_plus(cm-1)"]],
+            fmt="ok",
+        )
+        ax.set_ylabel("N(" + elem + ")$_{dust}$", fontsize=fs)
+
+    # finalize and save the figure
+    axes[2].set_xlabel("integrated area (cm$^{-1}$)", fontsize=fs)
+    plt.subplots_adjust(hspace=0, wspace=0.3)
+    plt.xlim([8.7, 31])
+    plt.savefig(outpath + feat_name + "_col.pdf", bbox_inches="tight")
+
+
 def main():
     # plotting settings for uniform plots
     fs = 18
     plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
     plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
 
-    # define the data path
-    datapath = "/Users/mdecleir/Documents/MEAD/JWST_ext/"
+    # define the data path and the output path
+    datapath = "/Users/mdecleir/Documents/MEAD/Extinction/JWST_data/"
+    outpath = "/Users/mdecleir/Documents/MEAD/Extinction/Plots/"
 
     # obtain the extinction properties
-    ext_table = Table.read(datapath + "Gordon+2009_tab2.dat", format="ascii")
+    ext_table = Table.read(
+        "/Users/mdecleir/Documents/MEAD/Extinction/Gordon+2009_tab2.dat", format="ascii"
+    )
+
+    # obtain the depletion measurements
+    dep_table = Table.read(
+        "/Users/mdecleir/stis_depletions/depletions.dat", format="ascii"
+    )
 
     # obtain the fitting results of the features
-    feat_58 = Table.read(datapath + "MIRI/fit_results_58.txt", format="ascii")
-    feat_10 = Table.read(datapath + "MIRI/fit_results_10.txt", format="ascii")
+    feat_58 = Table.read(datapath + "fit_results_58.txt", format="ascii")
+    feat_10 = Table.read(datapath + "fit_results_10.txt", format="ascii")
 
     # merge tables
     joined_ext_58 = join(ext_table, feat_58, keys_left="Name", keys_right="name")
     joined_ext_10 = join(ext_table, feat_10, keys_left="Name", keys_right="name")
+    joined_dep_10 = join(dep_table, feat_10, keys_left="star", keys_right="name")
 
     # create plots vs. A(V)
-    plot_feat_AV(datapath + "Plots/", "58", joined_ext_58)
-    plot_feat_AV(datapath + "Plots/", "10", joined_ext_10)
+    plot_feat_AV(outpath, "58", joined_ext_58)
+    plot_feat_AV(outpath, "10", joined_ext_10)
+
+    # create plot vs. dust column densities
+    plot_feat_col(outpath, "10", joined_dep_10)
 
 
 if __name__ == "__main__":
