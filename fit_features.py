@@ -4,7 +4,13 @@
 import numpy as np
 
 from astropy.table import Table
-from astropy.modeling import models, fitting
+from astropy.modeling.models import Gaussian1D, Polynomial1D
+from astropy.modeling.fitting import (
+    FittingWithOutlierRemoval,
+    LevMarLSQFitter,
+    LinearLSQFitter,
+)
+from astropy.stats import sigma_clip
 from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 
@@ -45,7 +51,7 @@ def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
         MCMC chains (for amplitude, mean and stddev in that order)
     """
     # fit the feature with the LevMarLSQFitter
-    lev_fitter = fitting.LevMarLSQFitter()
+    lev_fitter = LevMarLSQFitter()
     fit_result_feat_lev = lev_fitter(
         model,
         waves,
@@ -125,8 +131,8 @@ def fit_34(datapath, star):
     cont_mask = rangemask & ~feat_reg_mask & ~stellar_lines_out & ~np.isnan(fluxes)
 
     # fit the continuum
-    pol_mod = models.Polynomial1D(3)
-    lin_fitter = fitting.LinearLSQFitter()
+    pol_mod = Polynomial1D(3)
+    lin_fitter = LinearLSQFitter()
     fit_result_cont = lin_fitter(
         pol_mod,
         waves[cont_mask],
@@ -506,7 +512,7 @@ def fit_10(datapath, star):
 
     Returns
     -------
-    fit_result_feat_emcee : astropy.modeling.functional_models.Gaussian1D
+    fit_result_feat_emcee : astropy model
         MCMC fitting results
 
     chains : numpy.ndarray
@@ -521,8 +527,8 @@ def fit_10(datapath, star):
     fluxes = data["flux"]
 
     # define masks for the continuum fitting
-    rangemask = (waves > 7) & (waves <= 14)
-    feat_reg_mask = (waves > 8) & (waves <= 12.5)
+    rangemask = (waves > 6) & (waves <= 14)
+    feat_reg_mask = (waves > 7.5) & (waves <= 12.5)
     stellar_lines_out = ((waves > 7.424) & (waves <= 7.538)) | (
         (waves > 12.570) & (waves <= 12.618)
     )
@@ -536,9 +542,11 @@ def fit_10(datapath, star):
     cont_mask = rangemask & ~feat_reg_mask & ~stellar_lines_out & ~np.isnan(fluxes)
 
     # fit the continuum
-    pol_mod = models.Polynomial1D(3)
-    lin_fitter = fitting.LinearLSQFitter()
-    fit_result_cont = lin_fitter(
+    pol_mod = Polynomial1D(3)
+    lin_fitter = LinearLSQFitter()
+    out_fitter = FittingWithOutlierRemoval(lin_fitter, sigma_clip, niter=3, sigma=3)
+
+    fit_result_cont, clipmask = out_fitter(
         pol_mod,
         waves[cont_mask],
         fluxes[cont_mask] * waves[cont_mask] ** 2,
@@ -570,7 +578,16 @@ def fit_10(datapath, star):
         alpha=0.8,
         label="fit points",
     )
-    axes[0].set_ylabel("flux (Jy)", fontsize=fs)
+    # cross the sigma clipped data points that were not used in the fitting
+    axes[0].plot(
+        waves[cont_mask][clipmask],
+        fluxes[cont_mask][clipmask] * waves[cont_mask][clipmask] ** 2,
+        "x",
+        color="gray",
+        alpha=0.8,
+        label="clipped",
+    )
+    axes[0].set_ylabel(r"$\lambda^2 F(\lambda) [Jy \mu m^2)", fontsize=fs)
 
     # normalize the fluxes
     norm_fluxes = (
@@ -604,7 +621,7 @@ def fit_10(datapath, star):
     uncs = np.full(len(taus[feat_fit_mask]), unc)
 
     # define the initial model to fit the feature
-    gauss_mod = models.Gaussian1D(
+    gauss_mod = Gaussian1D(
         amplitude=0.1,
         stddev=1,
         mean=10,
@@ -656,10 +673,11 @@ def fit_all(datapath, stars, ext_table):
     Saves tables with fitting results
     """
     # list the features to be fitted
-    features = ["34", "58", "62", "10"]
+    # features = ["34", "58", "62", "10"]
+    features = ["10"]
 
     for feat_name in features:
-        print("Fitting " + feat_name + " feature")
+        print("Fitting " + feat_name + " micron feature")
         # create a table to store the results
         result_tab = Table(
             names=(
