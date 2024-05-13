@@ -15,7 +15,9 @@ from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 
 
-def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
+def fit_feature(
+    outpath, plotpath, star, model, waves, taus, uncs, axes, plot_waves, feat_name
+):
     """
     Function to fit a feature using the Levenberg-Marquardt algorithm as initial guess and MCMC fitting for refining
 
@@ -24,20 +26,28 @@ def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
     outpath : string
         Path to store the output of the MCMC fitting
 
+    plotpath : string
+        Path to store the plot of the fitted feature
+
     star : string
         Star name
 
     model : astropy model
         Initial model to fit to the data
 
-    waves : astropy Table Column
+    waves : astropy.table.column.Column
         Wavelengths to fit
 
-    taus : astropy Table Column
+    taus : astropy.table.column.Column
         Optical depths to fit
 
     uncs : numpy.ndarray
         Uncertainties to use in the fit
+
+    axes : numpy.ndarray
+       Plotting axes of the figure
+
+    plot_waves : astropy.table.column.Column
 
     feat_name : string
         Reference name for the feature
@@ -77,6 +87,10 @@ def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
         weights=1 / uncs,
     )
 
+    # plot the feature fit and save the figure
+    axes[1].plot(plot_waves, fit_result_feat_emcee(plot_waves), c="crimson", lw=2)
+    plt.savefig(plotpath + star + "_" + feat_name + "_fit.pdf", bbox_inches="tight")
+
     # obtain the MCMC chains
     chains = emcee_fitter.fit_info["sampler"].get_chain(
         flat=True, discard=np.int32(burn * nsteps)
@@ -89,6 +103,107 @@ def fit_feature(outpath, star, model, waves, taus, uncs, feat_name):
     )
 
     return fit_result_feat_emcee, chains
+
+
+def fit_cont(waves, fluxes, cont_mask, range_mask):
+    """
+    Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
+
+    Parameters
+    ----------
+    waves : astropy Table Column
+        Wavelengths to fit
+
+    fluxes : astropy Table Column
+        Fluxes to fit
+
+    cont_mask : numpy.ndarray
+        Mask for data to use in the continuum fitting
+
+    range_mask : numpy.ndarray
+        Mask for all the data in the wavelength range of interest
+
+    Returns
+    -------
+    taus : astropy Table Column
+        Optical depths (in range_mask)
+
+    unc : numpy.float64
+        Empirical uncertainty on the optical depth
+
+    axes : numpy.ndarray
+        Plotting axes of the figure
+    """
+    # fit the continuum
+    pol_mod = Polynomial1D(3)
+    lin_fitter = LinearLSQFitter()
+    out_fitter = FittingWithOutlierRemoval(lin_fitter, sigma_clip, niter=3, sigma=3)
+
+    fit_result_cont, clipmask = out_fitter(
+        pol_mod,
+        waves[cont_mask],
+        fluxes[cont_mask] * waves[cont_mask] ** 2,
+    )
+
+    # plot the data
+    fig, axes = plt.subplots(
+        2,
+        sharex=True,
+        figsize=(9, 10),
+        gridspec_kw={"hspace": 0},
+    )
+    axes[0].plot(
+        waves[range_mask], fluxes[range_mask] * waves[range_mask] ** 2, c="k", alpha=0.9
+    )
+
+    # plot the continuum fit
+    axes[0].plot(
+        waves[range_mask],
+        fit_result_cont(waves[range_mask]),
+        c="tab:orange",
+        label="cont. fit",
+    )
+
+    # plot the data points that were used in the continuum fitting
+    axes[0].plot(
+        waves[cont_mask],
+        fluxes[cont_mask] * waves[cont_mask] ** 2,
+        "r.",
+        markersize=8,
+        alpha=0.8,
+        label="fit points",
+    )
+
+    # cross the sigma clipped data points that were not used in the fitting
+    axes[0].plot(
+        waves[cont_mask][clipmask],
+        fluxes[cont_mask][clipmask] * waves[cont_mask][clipmask] ** 2,
+        "x",
+        color="gray",
+        alpha=0.8,
+        label="clipped",
+    )
+    fs = 18
+    axes[0].set_ylabel(r"$\lambda^2 F(\lambda)\: [\mu m^2 \:Jy]$", fontsize=fs)
+
+    # normalize the fluxes
+    norm_fluxes = (
+        fluxes[range_mask] * waves[range_mask] ** 2 / fit_result_cont(waves[range_mask])
+    )
+
+    # convert to optical depth (only exists in range_mask)
+    taus = np.log(1 / norm_fluxes)
+
+    # plot the optical depth
+    axes[1].plot(waves[range_mask], taus, c="k", alpha=0.9)
+    axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
+    axes[1].set_ylabel("optical depth", fontsize=fs)
+    axes[1].axhline(ls=":", c="k")
+
+    # calculate the empirical uncertainy on the optical depth in clean regions
+    unc = np.std(taus[cont_mask[range_mask]])
+
+    return taus, unc, axes
 
 
 def fit_34(datapath, star):
@@ -527,7 +642,7 @@ def fit_10(datapath, star):
     fluxes = data["flux"]
 
     # define masks for the continuum fitting
-    rangemask = (waves > 6) & (waves <= 14)
+    range_mask = (waves > 6) & (waves <= 14)
     feat_reg_mask = (waves > 7.5) & (waves <= 12.5)
     stellar_lines_out = ((waves > 7.424) & (waves <= 7.538)) | (
         (waves > 12.570) & (waves <= 12.618)
@@ -538,71 +653,15 @@ def fit_10(datapath, star):
     # 7.435-7.522, 7.449-7.471, 7.443-7.538, 7.434-7.520, 7.454-7.467, 7.424-7.522, 7.428-7.473, 7.453-7.462
     # 7.497-7.512, 7.494-7.512
     # 12.570-12.618
+    cont_mask = range_mask & ~feat_reg_mask & ~stellar_lines_out & ~np.isnan(fluxes)
 
-    cont_mask = rangemask & ~feat_reg_mask & ~stellar_lines_out & ~np.isnan(fluxes)
-
-    # fit the continuum
-    pol_mod = Polynomial1D(3)
-    lin_fitter = LinearLSQFitter()
-    out_fitter = FittingWithOutlierRemoval(lin_fitter, sigma_clip, niter=3, sigma=3)
-
-    fit_result_cont, clipmask = out_fitter(
-        pol_mod,
-        waves[cont_mask],
-        fluxes[cont_mask] * waves[cont_mask] ** 2,
-    )
-
-    # plot the data and the continuum fit
-    fig, axes = plt.subplots(
-        2,
-        sharex=True,
-        figsize=(9, 10),
-        gridspec_kw={"hspace": 0},
-    )
-    fs = 18
-    axes[0].plot(
-        waves[rangemask], fluxes[rangemask] * waves[rangemask] ** 2, c="k", alpha=0.9
-    )
-    axes[0].plot(
-        waves[rangemask],
-        fit_result_cont(waves[rangemask]),
-        c="tab:orange",
-        label="cont. fit",
-    )
-    # plot the data points that were used in the continuum fitting
-    axes[0].plot(
-        waves[cont_mask],
-        fluxes[cont_mask] * waves[cont_mask] ** 2,
-        "r.",
-        markersize=8,
-        alpha=0.8,
-        label="fit points",
-    )
-    # cross the sigma clipped data points that were not used in the fitting
-    axes[0].plot(
-        waves[cont_mask][clipmask],
-        fluxes[cont_mask][clipmask] * waves[cont_mask][clipmask] ** 2,
-        "x",
-        color="gray",
-        alpha=0.8,
-        label="clipped",
-    )
-    axes[0].set_ylabel(r"$\lambda^2 F(\lambda) [Jy \mu m^2)", fontsize=fs)
-
-    # normalize the fluxes
-    norm_fluxes = (
-        fluxes[rangemask] * waves[rangemask] ** 2 / fit_result_cont(waves[rangemask])
-    )
-
-    # convert to optical depth (only exists in rangemask)
-    taus = np.log(1 / norm_fluxes)
-
-    # calculate the empirical uncertainy on the optical depth in clean regions
-    unc = np.std(taus[cont_mask[rangemask]])
+    # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, range_mask)
 
     # mask the stellar lines inside the feature and define the mask for the feature fitting
     stellar_lines_in = (
-        ((waves > 8.732) & (waves <= 8.775))
+        (waves > 7.424) & (waves <= 7.538)
+        | ((waves > 8.732) & (waves <= 8.775))
         | ((waves > 9.381) & (waves <= 9.403))
         | ((waves > 10.447) & (waves <= 10.575))
         | ((waves > 11.251) & (waves <= 11.373))
@@ -614,8 +673,9 @@ def fit_10(datapath, star):
     # 10.447-10.575, 10.488-10.505
     # 11.285-11.321, 11.266-11.314, 11.251-11.373, 11.296-11.314
     # 12.352-12.424, 12.355-12.384, 12.312-12.429, 12.357-12.415, 12.312-12.445, 12.354-12.402, 12.355-12.381
-    feat_full_mask = feat_reg_mask & ~stellar_lines_in
-    feat_fit_mask = feat_full_mask[rangemask] & ~np.isnan(taus)
+    feat_fit_mask = (
+        feat_reg_mask[range_mask] & ~stellar_lines_in[range_mask] & ~np.isnan(taus)
+    )
 
     # define the uncertainties
     uncs = np.full(len(taus[feat_fit_mask]), unc)
@@ -629,26 +689,20 @@ def fit_10(datapath, star):
             "mean": (9.5, 10.5),
         },
     )
-    # fit the feature
+
+    # fit and plot the feature
     fit_result_feat_emcee, chains = fit_feature(
         datapath + "MIRI/",
+        datapath,
         star,
         gauss_mod,
-        waves[rangemask][feat_fit_mask],
+        waves[range_mask][feat_fit_mask],
         taus[feat_fit_mask],
         uncs,
+        axes,
+        waves[range_mask],
         "10",
     )
-
-    # plot the feature fits
-    axes[1].plot(waves[rangemask], taus, c="k", alpha=0.9)
-    axes[1].plot(
-        waves[rangemask], fit_result_feat_emcee(waves[rangemask]), c="crimson", lw=2
-    )
-    axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
-    axes[1].set_ylabel("optical depth", fontsize=fs)
-    axes[1].axhline(ls=":", c="k")
-    plt.savefig(datapath + star + "_10_fit.pdf", bbox_inches="tight")
 
     return fit_result_feat_emcee, chains
 
