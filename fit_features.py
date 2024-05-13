@@ -15,96 +15,6 @@ from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 
 
-def fit_feature(
-    outpath, plotpath, star, model, waves, taus, uncs, axes, plot_waves, feat_name
-):
-    """
-    Function to fit a feature using the Levenberg-Marquardt algorithm as initial guess and MCMC fitting for refining
-
-    Parameters
-    ----------
-    outpath : string
-        Path to store the output of the MCMC fitting
-
-    plotpath : string
-        Path to store the plot of the fitted feature
-
-    star : string
-        Star name
-
-    model : astropy model
-        Initial model to fit to the data
-
-    waves : astropy.table.column.Column
-        Wavelengths to fit
-
-    taus : astropy.table.column.Column
-        Optical depths to fit
-
-    uncs : numpy.ndarray
-        Uncertainties to use in the fit
-
-    axes : numpy.ndarray
-       Plotting axes of the figure
-
-    plot_waves : astropy.table.column.Column
-
-    feat_name : string
-        Reference name for the feature
-
-    Returns
-    -------
-    fit_result_feat_emcee : astropy model
-        MCMC fitting results
-
-    chains : numpy.ndarray
-        MCMC chains (for amplitude, mean and stddev in that order)
-    """
-    # fit the feature with the LevMarLSQFitter
-    lev_fitter = LevMarLSQFitter()
-    fit_result_feat_lev = lev_fitter(
-        model,
-        waves,
-        taus,
-        weights=1 / uncs,
-        maxiter=10000,
-        filter_non_finite=True,
-    )
-
-    # fit the feature again with MCMC
-    emcee_samples_file = (
-        outpath + "Fitting_results/" + star + "_chains_" + feat_name + ".h5"
-    )
-    nsteps = 5000
-    burn = 0.1
-    emcee_fitter = EmceeFitter(
-        nsteps=nsteps, burnfrac=burn, save_samples=emcee_samples_file
-    )
-    fit_result_feat_emcee = emcee_fitter(
-        fit_result_feat_lev,
-        waves,
-        taus,
-        weights=1 / uncs,
-    )
-
-    # plot the feature fit and save the figure
-    axes[1].plot(plot_waves, fit_result_feat_emcee(plot_waves), c="crimson", lw=2)
-    plt.savefig(plotpath + star + "_" + feat_name + "_fit.pdf", bbox_inches="tight")
-
-    # obtain the MCMC chains
-    chains = emcee_fitter.fit_info["sampler"].get_chain(
-        flat=True, discard=np.int32(burn * nsteps)
-    )
-
-    # plot the MCMC fitting results
-    emcee_fitter.plot_emcee_results(
-        fit_result_feat_emcee,
-        filebase=outpath + "Fitting_results/" + star + "_" + feat_name,
-    )
-
-    return fit_result_feat_emcee, chains
-
-
 def fit_cont(waves, fluxes, cont_mask, range_mask):
     """
     Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
@@ -204,6 +114,96 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
     unc = np.std(taus[cont_mask[range_mask]])
 
     return taus, unc, axes
+
+
+def fit_feature(
+    outpath, plotpath, star, model, waves, taus, uncs, axes, plot_waves, feat_name
+):
+    """
+    Function to fit a feature using the Levenberg-Marquardt algorithm as initial guess and MCMC fitting for refining
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the output of the MCMC fitting
+
+    plotpath : string
+        Path to store the plot of the fitted feature
+
+    star : string
+        Star name
+
+    model : astropy model
+        Initial model to fit to the data
+
+    waves : astropy.table.column.Column
+        Wavelengths to fit
+
+    taus : astropy.table.column.Column
+        Optical depths to fit
+
+    uncs : numpy.ndarray
+        Uncertainties to use in the fit
+
+    axes : numpy.ndarray
+       Plotting axes of the figure
+
+    plot_waves : astropy.table.column.Column
+
+    feat_name : string
+        Reference name for the feature
+
+    Returns
+    -------
+    fit_result_feat_emcee : astropy model
+        MCMC fitting results
+
+    chains : numpy.ndarray
+        MCMC chains (for amplitude, mean and stddev in that order)
+    """
+    # fit the feature with the LevMarLSQFitter
+    lev_fitter = LevMarLSQFitter()
+    fit_result_feat_lev = lev_fitter(
+        model,
+        waves,
+        taus,
+        weights=1 / uncs,
+        maxiter=10000,
+        filter_non_finite=True,
+    )
+
+    # fit the feature again with MCMC
+    emcee_samples_file = (
+        outpath + "Fitting_results/" + star + "_chains_" + feat_name + ".h5"
+    )
+    nsteps = 5000
+    burn = 0.1
+    emcee_fitter = EmceeFitter(
+        nsteps=nsteps, burnfrac=burn, save_samples=emcee_samples_file
+    )
+    fit_result_feat_emcee = emcee_fitter(
+        fit_result_feat_lev,
+        waves,
+        taus,
+        weights=1 / uncs,
+    )
+
+    # plot the feature fit and save the figure
+    axes[1].plot(plot_waves, fit_result_feat_emcee(plot_waves), c="crimson", lw=2)
+    plt.savefig(plotpath + star + "_" + feat_name + "_fit.pdf", bbox_inches="tight")
+
+    # obtain the MCMC chains
+    chains = emcee_fitter.fit_info["sampler"].get_chain(
+        flat=True, discard=np.int32(burn * nsteps)
+    )
+
+    # plot the MCMC fitting results
+    emcee_fitter.plot_emcee_results(
+        fit_result_feat_emcee,
+        filebase=outpath + "Fitting_results/" + star + "_" + feat_name,
+    )
+
+    return fit_result_feat_emcee, chains
 
 
 def fit_34(datapath, star):
