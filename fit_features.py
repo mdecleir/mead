@@ -66,14 +66,6 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
         waves[range_mask], fluxes[range_mask] * waves[range_mask] ** 2, c="k", alpha=0.9
     )
 
-    # plot the continuum fit
-    axes[0].plot(
-        waves[range_mask],
-        fit_result_cont(waves[range_mask]),
-        c="tab:orange",
-        label="cont. fit",
-    )
-
     # plot the data points that were used in the continuum fitting
     axes[0].plot(
         waves[cont_mask],
@@ -92,6 +84,14 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
         color="gray",
         alpha=0.8,
         label="clipped",
+    )
+
+    # plot the continuum fit
+    axes[0].plot(
+        waves[range_mask],
+        fit_result_cont(waves[range_mask]),
+        c="tab:orange",
+        label="cont. fit",
     )
     fs = 18
     axes[0].set_ylabel(r"$\lambda^2 F(\lambda)\: [\mu m^2 \:Jy]$", fontsize=fs)
@@ -673,8 +673,17 @@ def fit_10(datapath, star):
     # 10.447-10.575, 10.488-10.505
     # 11.285-11.321, 11.266-11.314, 11.251-11.373, 11.296-11.314
     # 12.352-12.424, 12.355-12.384, 12.312-12.429, 12.357-12.415, 12.312-12.445, 12.354-12.402, 12.355-12.381
+
+    # mask the suspicious data between 11 and 12 micron
+    bad_data = (waves > 11.3) & (waves <= 12.1)
+    # mask per star
+    # 11.541-11.947, 11.462-12.013, 11.339-12.080, 11.355-12.096,
+
     feat_fit_mask = (
-        feat_reg_mask[range_mask] & ~stellar_lines_in[range_mask] & ~np.isnan(taus)
+        feat_reg_mask[range_mask]
+        & ~stellar_lines_in[range_mask]
+        & ~bad_data[range_mask]
+        & ~np.isnan(taus)
     )
 
     # define the uncertainties
