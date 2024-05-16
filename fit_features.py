@@ -15,6 +15,92 @@ from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 
 
+def _wavegrid(waverange, resolution):
+    """
+    Function to define a wavelength grid with a specified resolution between
+    a minimum and maximum wavelength
+
+    Parameters
+    ----------
+    waverange : tuple of floats (min,max)
+        Minimum, maximum wavelength of the grid
+
+    resolution : float
+        Resolution of grid
+
+    Returns
+    -------
+    wave_info : tuple of floats (waves, waves_bin_min, waves_bin_max)
+        Wavelength grid centers, minimum and maximum bin wavelengths
+    """
+    # calculate the step size in log space
+    # delta_l_log = log(l2) - log(l1) = log(l2/l1) = log((lc+S/2)/(lc-S/2))
+    # = log((2R+1)/(2R-1))
+    # S = step size in linear space; R = lc/S
+    delta_wave_log = np.log10((2 * resolution + 1) / (2 * resolution - 1))
+
+    # create the grid in log space
+    wave_log10 = np.arange(
+        np.log10(waverange[0]),
+        np.log10(waverange[1]),
+        delta_wave_log,
+    )
+
+    # calculate the grid in linear space
+    full_wave_min = 10 ** wave_log10
+    full_wave_max = 10 ** (wave_log10 + delta_wave_log)
+    full_wave = (full_wave_min + full_wave_max) / 2
+
+    return (full_wave, full_wave_min, full_wave_max)
+
+
+def rebin_constres(data, waverange, resolution):
+    """
+    Function to rebin a spectrum to a fixed spectral resolution and within a specified wavelength range
+
+    Parameters
+    ----------
+    data : Astropy Table
+        Spectrum to be rebinned
+
+    waverange : tuple of floats (min,max)
+        Minimum, maximum wavelength of the rebinned wavelength grid
+
+    resolution : float
+        Spectral resolution of the rebinned spectrum
+
+    Returns
+    -------
+    Rebinned wavelengths, fluxes and uncertainties
+    """
+    # read the data
+    waves = data["wavelength"]
+    fluxes = data["flux"]
+    uncs = data["unc"]
+
+    # set up the new wavelength grid
+    full_wave, full_wave_min, full_wave_max = _wavegrid(waverange, resolution)
+    n_waves = len(full_wave)
+
+    # set up the new rebinned arrays
+    new_waves = full_wave
+    new_fluxes = np.full((n_waves), np.nan, dtype=float)
+    new_uncs = np.full((n_waves), np.nan, dtype=float)
+
+    # rebin using a weighted average
+    for k in range(n_waves):
+        bin_mask = (waves >= full_wave_min[k]) & (waves < full_wave_max[k])
+        if np.sum(bin_mask) > 0:
+            weights = 1 / np.square(uncs[bin_mask])
+            sweights = np.nansum(weights)
+            new_fluxes[k] = np.nansum(weights * fluxes[bin_mask]) / sweights
+            new_uncs[k] = 1 / np.sqrt(sweights)
+        else:
+            print("Some bins are empty, you might want to lower the resolution.")
+
+    return (new_waves, new_fluxes, new_uncs)
+
+
 def fit_cont(waves, fluxes, cont_mask, range_mask):
     """
     Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
@@ -641,12 +727,16 @@ def fit_10(datapath, star):
     waves = data["wavelength"]
     fluxes = data["flux"]
 
+    # rebin the spectrum
+    waves, fluxes, uncs = rebin_constres(data, (6, 14), 500)
+
     # define masks for the continuum fitting
     range_mask = (waves > 6) & (waves <= 14)
     feat_reg_mask = (waves > 7.5) & (waves <= 12.5)
     stellar_lines_out = ((waves > 7.424) & (waves <= 7.538)) | (
         (waves > 12.570) & (waves <= 12.618)
     )
+
     # feature region per star:
     # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
     # stellar line masks per star:
@@ -687,7 +777,7 @@ def fit_10(datapath, star):
     )
 
     # define the uncertainties
-    uncs = np.full(len(taus[feat_fit_mask]), unc)
+    emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
 
     # define the initial model to fit the feature
     gauss_mod = Gaussian1D(
@@ -707,7 +797,7 @@ def fit_10(datapath, star):
         gauss_mod,
         waves[range_mask][feat_fit_mask],
         taus[feat_fit_mask],
-        uncs,
+        emp_uncs,
         axes,
         waves[range_mask],
         "10",
