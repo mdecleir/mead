@@ -4,7 +4,7 @@
 import numpy as np
 
 from astropy.table import Table
-from astropy.modeling.models import Gaussian1D, Polynomial1D
+from astropy.modeling.models import Drude1D, Gaussian1D, Polynomial1D
 from astropy.modeling.fitting import (
     FittingWithOutlierRemoval,
     LevMarLSQFitter,
@@ -274,6 +274,10 @@ def fit_feature(
         weights=1 / uncs,
     )
 
+    # calculate chi square
+    residuals = fit_result_feat_emcee(waves) - taus
+    chi2 = np.sum((residuals / uncs) ** 2)
+
     # plot the feature fit and save the figure
     axes[1].plot(plot_waves, fit_result_feat_emcee(plot_waves), c="crimson", lw=2)
     plt.savefig(plotpath + star + "_" + feat_name + "_fit.pdf", bbox_inches="tight")
@@ -289,7 +293,7 @@ def fit_feature(
         filebase=outpath + "Fitting_results/" + star + "_" + feat_name,
     )
 
-    return fit_result_feat_emcee, chains
+    return fit_result_feat_emcee, chains, chi2
 
 
 def fit_34(datapath, star):
@@ -736,7 +740,6 @@ def fit_10(datapath, star):
     stellar_lines_out = ((waves > 7.424) & (waves <= 7.538)) | (
         (waves > 12.570) & (waves <= 12.618)
     )
-
     # feature region per star:
     # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
     # stellar line masks per star:
@@ -782,19 +785,29 @@ def fit_10(datapath, star):
     # define the initial model to fit the feature
     gauss_mod = Gaussian1D(
         amplitude=0.1,
-        stddev=1,
         mean=10,
+        stddev=1,
         bounds={
             "mean": (9.5, 10.5),
         },
     )
 
+    drude_mod = Drude1D(
+        amplitude=0.1,
+        x_0=10,
+        fwhm=2,
+        bounds={
+            "x_0": (9.5, 10.5),
+        },
+    )
+
     # fit and plot the feature
-    fit_result_feat_emcee, chains = fit_feature(
+    fit_result_feat_emcee, chains, chi2 = fit_feature(
         datapath + "MIRI/",
         datapath,
         star,
         gauss_mod,
+        # drude_mod,
         waves[range_mask][feat_fit_mask],
         taus[feat_fit_mask],
         emp_uncs,
@@ -803,7 +816,7 @@ def fit_10(datapath, star):
         "10",
     )
 
-    return fit_result_feat_emcee, chains
+    return fit_result_feat_emcee, chains, chi2
 
 
 def fit_all(datapath, stars, ext_table):
@@ -847,6 +860,7 @@ def fit_all(datapath, stars, ext_table):
                 "area(cm-1)",
                 "area_unc_min(cm-1)",
                 "area_unc_plus(cm-1)",
+                "chi2",
                 "A(V)",
                 "R(V)",
             ),
@@ -866,27 +880,21 @@ def fit_all(datapath, stars, ext_table):
                 "float64",
                 "float64",
                 "float64",
+                "float64",
             ),
         )
 
         # fit the feature for all stars
         for star in stars:
+            print(star)
             func = eval("fit_" + feat_name)
-            fit_result, chains = func(datapath, star)
+            fit_result, chains, chi2 = func(datapath, star)
 
             # obtain the results
-            amp = fit_result.amplitude.value
-            amp_unc_plus = fit_result.amplitude.unc_plus
-            amp_unc_min = fit_result.amplitude.unc_minus
-            amp_unc = fit_result.amplitude.unc
-            mean = fit_result.mean.value
-            mean_unc_plus = fit_result.mean.unc_plus
-            mean_unc_min = fit_result.mean.unc_minus
-            mean_unc = fit_result.mean.unc
-            stddev = fit_result.stddev.value
-            stddev_unc_plus = fit_result.stddev.unc_plus
-            stddev_unc_min = fit_result.stddev.unc_minus
-            stddev_unc = fit_result.stddev.unc
+            result_list = []
+            for param_name in fit_result.param_names:
+                param = getattr(fit_result, param_name)
+                result_list.extend([param.value, param.unc_minus, param.unc_plus])
 
             # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
             # dnu = 1/(lambda**2) * dlambda * 1e4
@@ -911,18 +919,11 @@ def fit_all(datapath, stars, ext_table):
             result_tab.add_row(
                 (
                     star,
-                    amp,
-                    amp_unc_min,
-                    amp_unc_plus,
-                    mean,
-                    mean_unc_min,
-                    mean_unc_plus,
-                    stddev,
-                    stddev_unc_min,
-                    stddev_unc_plus,
+                    *result_list,
                     area,
                     area_unc_min,
                     area_unc_plus,
+                    chi2,
                     AV,
                     RV,
                 )
