@@ -4,7 +4,7 @@
 import numpy as np
 
 from astropy.table import Table
-from astropy.modeling.models import Drude1D, Gaussian1D, Polynomial1D
+from astropy.modeling.models import custom_model, Drude1D, Gaussian1D, Polynomial1D
 from astropy.modeling.fitting import (
     FittingWithOutlierRemoval,
     LevMarLSQFitter,
@@ -13,6 +13,25 @@ from astropy.modeling.fitting import (
 from astropy.stats import sigma_clip
 from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
+
+
+def gamma(x, x_o=1, gamma_o=1, asym=1):
+    """
+    Gamma function (wavelength dependent width, replacing the FWHM)
+    """
+    return 2 * gamma_o / (1 + np.exp(asym * (x - x_o)))
+
+
+def drude_asymmetric(x, scale=1, x_o=1, gamma_o=1, asym=1):
+    """
+    "Asymmetric" Drude profile
+    """
+    y = (
+        scale
+        * (gamma(x, x_o, gamma_o, asym) / x_o) ** 2
+        / ((x / x_o - x_o / x) ** 2 + (gamma(x, x_o, gamma_o, asym) / x_o) ** 2)
+    )
+    return y
 
 
 def _wavegrid(waverange, resolution):
@@ -801,6 +820,16 @@ def fit_10(datapath, star):
         },
     )
 
+    Drude_asym = custom_model(drude_asymmetric)
+    drude_asym_mod = Drude_asym(
+        scale=0.1,
+        x_o=10,
+        gamma_o=2,
+        bounds={
+            "x_o": (9.5, 10.5),
+        },
+    )
+
     # fit and plot the feature
     fit_result_feat_emcee, chains, chi2 = fit_feature(
         datapath + "MIRI/",
@@ -808,6 +837,7 @@ def fit_10(datapath, star):
         star,
         gauss_mod,
         # drude_mod,
+        #  drude_asym_mod,
         waves[range_mask][feat_fit_mask],
         taus[feat_fit_mask],
         emp_uncs,
@@ -857,6 +887,9 @@ def fit_all(datapath, stars, ext_table):
                 "std(micron)",
                 "std_unc_min(micron)",
                 "std_unc_plus(micron)",
+                # "asym",
+                # "asymm",
+                # "asymp",
                 "area(cm-1)",
                 "area_unc_min(cm-1)",
                 "area_unc_plus(cm-1)",
@@ -881,6 +914,9 @@ def fit_all(datapath, stars, ext_table):
                 "float64",
                 "float64",
                 "float64",
+                # "float64",
+                # "float64",
+                # "float64",
             ),
         )
 
@@ -889,6 +925,7 @@ def fit_all(datapath, stars, ext_table):
             print(star)
             func = eval("fit_" + feat_name)
             fit_result, chains, chi2 = func(datapath, star)
+            print(fit_result, chi2)
 
             # obtain the results
             result_list = []
