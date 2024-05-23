@@ -33,7 +33,7 @@ def plot_feat_AV(outpath, feat_name, data):
     # calculate the uncertainty on A(V)
     AV_err = np.sqrt(data["AV_runc"] ** 2 + data["AV_sunc"] ** 2)
 
-    # plot feature properties vs. A(V)
+    # plot the feature properties vs. A(V)
     props = ["amplitude", "wavelength(micron)", "std(micron)", "area(cm-1)"]
     for prop, ax in zip(props, axes.flat):
         # obtain the y-axis uncertainties
@@ -57,7 +57,7 @@ def plot_feat_AV(outpath, feat_name, data):
     # finalize and save the figure
     axes[1, 0].set_xlabel("A(V)", fontsize=fs)
     axes[1, 1].set_xlabel("A(V)", fontsize=fs)
-    axes[0, 0].set_ylabel("amplitude", fontsize=fs)
+    axes[0, 0].set_ylabel("optical depth", fontsize=fs)
     axes[0, 1].set_ylabel(r"central wavelength ($\mu$m)", fontsize=fs)
     axes[1, 0].set_ylabel(r"standard deviation ($\mu$m)", fontsize=fs)
     axes[1, 1].set_ylabel("integrated area (cm$^{-1}$)", fontsize=fs)
@@ -94,7 +94,7 @@ def plot_feat_col(outpath, feat_name, data):
         ax.errorbar(
             data["area(cm-1)"],
             data["N(" + elem + ")_d"],
-            xerr=[data["area_unc_min(cm-1)"], data["area_unc_plus(cm-1)"]],
+            #  xerr=[data["area_unc_min(cm-1)"], data["area_unc_plus(cm-1)"]],
             fmt="ok",
         )
         ax.set_ylabel("N(" + elem + ")$_{dust}$", fontsize=fs)
@@ -102,7 +102,6 @@ def plot_feat_col(outpath, feat_name, data):
     # finalize and save the figure
     axes[2].set_xlabel("integrated area (cm$^{-1}$)", fontsize=fs)
     plt.subplots_adjust(hspace=0, wspace=0.3)
-    plt.xlim([8.7, 31])
     plt.savefig(outpath + feat_name + "_col.pdf", bbox_inches="tight")
 
 
@@ -114,11 +113,12 @@ def main():
 
     # define the data path and the output path
     datapath = "/Users/mdecleir/Documents/MEAD/Extinction/JWST_data/"
-    outpath = "/Users/mdecleir/Documents/MEAD/Extinction/Plots/"
+    outpath = "/Users/mdecleir/Documents/MEAD/Plots/"
 
     # obtain the extinction properties
     ext_table = Table.read(
-        "/Users/mdecleir/Documents/MEAD/Extinction/Gordon+2009_tab2.dat", format="ascii"
+        "/Users/mdecleir/Documents/MEAD/Literature_data/Gordon+2009_tab2.dat",
+        format="ascii",
     )
 
     # obtain the depletion measurements
@@ -135,12 +135,16 @@ def main():
     joined_ext_10 = join(ext_table, feat_10, keys_left="Name", keys_right="name")
     joined_dep_10 = join(dep_table, feat_10, keys_left="star", keys_right="name")
 
+    # define the stars that should be masked
+    bad_star = "HD014434"
+    bad_mask = joined_ext_10["Name"] == bad_star
+
     # create plots vs. A(V)
-    plot_feat_AV(outpath, "58", joined_ext_58)
-    plot_feat_AV(outpath, "10", joined_ext_10)
+    # plot_feat_AV(outpath, "58", joined_ext_58)
+    plot_feat_AV(outpath, "10", joined_ext_10[~bad_mask])
 
     # create plot vs. dust column densities
-    plot_feat_col(outpath, "10", joined_dep_10)
+    # plot_feat_col(outpath, "10", joined_dep_10)
 
 
 if __name__ == "__main__":
