@@ -8,6 +8,100 @@ from matplotlib import pyplot as plt
 from scipy.stats import spearmanr
 
 
+def plot_feat(outpath, feat_name, data):
+    """
+    Function to plot the feature properties vs. each other
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    feat_name : string
+        Reference name for the feature
+
+    data : astropy Table
+        Data to plot
+
+    Returns
+    -------
+    Plots with feature properties
+    """
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(3, 3, figsize=(12, 12), sharex="col", sharey="row")
+
+    # define the parameters to be plotted
+    xpars = ["amplitude", "wavelength(micron)", "std(micron)"]
+    xlabels = [
+        r"$\tau(\lambda_0)$",
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\sigma$ ($\mu$m)",
+    ]
+    ypars = ["wavelength(micron)", "std(micron)", "area(cm-1)"]
+    ylabels = [
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\sigma$ ($\mu$m)",
+        "$A$ (cm$^{-1}$)",
+    ]
+    for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
+        # obtain the x-axis uncertainties
+        if "(" in xpar:
+            index = xpar.find("(")
+            x_unc = (
+                data[xpar[:index] + "_unc_min" + xpar[index:]],
+                data[xpar[:index] + "_unc_plus" + xpar[index:]],
+            )
+        else:
+            x_unc = data[xpar + "_unc_min"], data[xpar + "_unc_plus"]
+
+        # add the x-axis label
+        axes[2, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
+            # skip the duplicate plots
+            if j < i:
+                axes[j, i].axis("off")
+                continue
+
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                y_unc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+
+            # plot the data
+            axes[j, i].errorbar(
+                data[xpar],
+                data[ypar],
+                xerr=x_unc,
+                yerr=y_unc,
+                fmt="ok",
+            )
+
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.9,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+
+    # finalize and save the figure
+    plt.subplots_adjust(hspace=0, wspace=0)
+    plt.savefig(outpath + feat_name + "_params.pdf", bbox_inches="tight")
+
+
 def plot_feat_AV_RV(outpath, feat_name, data):
     """
     Function to plot the feature properties vs. A(V) and R(V)
@@ -25,7 +119,7 @@ def plot_feat_AV_RV(outpath, feat_name, data):
 
     Returns
     -------
-        Plots with feature properties vs. A(V)
+    Plots with feature properties vs. A(V) and R(V)
     """
     # create the figure
     fs = 18
@@ -159,9 +253,12 @@ def main():
 
     # define the stars that should be masked
     bad_star = "HD014434"
-    bad_mask = joined_ext_10["Name"] == bad_star
+    bad_mask = feat_10["name"] == bad_star
 
-    # create plots vs. A(V)
+    # plot the feature properties
+    plot_feat(outpath, "10", feat_10[~bad_mask])
+
+    # create plots vs. A(V) and R(V)
     # plot_feat_AV(outpath, "58", joined_ext_58)
     plot_feat_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
 
