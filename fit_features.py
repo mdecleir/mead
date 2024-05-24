@@ -849,7 +849,7 @@ def fit_10(datapath, star):
     return fit_result_feat_emcee, chains, chi2
 
 
-def fit_all(datapath, stars, ext_table):
+def fit_all(datapath, stars):
     """
     Fit all features for all stars
 
@@ -860,9 +860,6 @@ def fit_all(datapath, stars, ext_table):
 
     stars : list
         Star names
-
-    ext_table : Astropy Table
-        Table with extinction measurements
 
     Returns
     -------
@@ -875,7 +872,7 @@ def fit_all(datapath, stars, ext_table):
     for feat_name in features:
         print("Fitting " + feat_name + " micron feature")
         # create a table to store the results
-        result_tab = Table(
+        table_txt = Table(
             names=(
                 "name",
                 "amplitude",
@@ -894,13 +891,9 @@ def fit_all(datapath, stars, ext_table):
                 "area_unc_min(cm-1)",
                 "area_unc_plus(cm-1)",
                 "chi2",
-                "A(V)",
-                "R(V)",
             ),
             dtype=(
                 "str",
-                "float64",
-                "float64",
                 "float64",
                 "float64",
                 "float64",
@@ -920,6 +913,17 @@ def fit_all(datapath, stars, ext_table):
             ),
         )
 
+        table_lat = Table(
+            names=(
+                "star",
+                r"$\tau$($\lambda_0$)",
+                r"$\lambda_0$(\micron)",
+                r"$\sigma$(\micron)",
+                r"$A$(cm$^{-1}$)",
+            ),
+            dtype=("str", "str", "str", "str", "str"),
+        )
+
         # fit the feature for all stars
         for star in stars:
             print(star)
@@ -929,9 +933,18 @@ def fit_all(datapath, stars, ext_table):
 
             # obtain the results
             result_list = []
+            lat_list = []
             for param_name in fit_result.param_names:
                 param = getattr(fit_result, param_name)
                 result_list.extend([param.value, param.unc_minus, param.unc_plus])
+                lat_list.append(
+                    "{:.2f}".format(param.value)
+                    + "_{-"
+                    + "{:.2f}".format(param.unc_minus)
+                    + "}^{+"
+                    + "{:.2f}".format(param.unc_plus)
+                    + "}"
+                )
 
             # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
             # dnu = 1/(lambda**2) * dlambda * 1e4
@@ -947,13 +960,8 @@ def fit_all(datapath, stars, ext_table):
             area_unc_min = area - area16
             area_unc_plus = area84 - area
 
-            # obtain A(V) and R(V)
-            mask = ext_table["Name"] == star
-            AV = ext_table[mask]["AV"]
-            RV = ext_table[mask]["RV"]
-
-            # add the results to a table
-            result_tab.add_row(
+            # add the results to the tables
+            table_txt.add_row(
                 (
                     star,
                     *result_list,
@@ -961,15 +969,37 @@ def fit_all(datapath, stars, ext_table):
                     area_unc_min,
                     area_unc_plus,
                     chi2,
-                    AV,
-                    RV,
                 )
             )
 
-        # write the table to a file
-        result_tab.write(
+            table_lat.add_row(
+                (
+                    star,
+                    *lat_list,
+                    "{:.2f}".format(area)
+                    + "_{-"
+                    + "{:.2f}".format(area_unc_min)
+                    + "}^{+"
+                    + "{:.2f}".format(area_unc_plus)
+                    + "}",
+                )
+            )
+
+        # write the tables to files
+        table_txt.write(
             datapath + "fit_results_" + feat_name + ".txt",
             format="ascii",
+            overwrite=True,
+        )
+
+        table_lat.write(
+            datapath + "fit_results_" + feat_name + ".tex",
+            format="aastex",
+            col_align="l|CCCC",
+            latexdict={
+                "tabletype": "deluxetable*",
+                "caption": r"MCMC fitting results for the 10 \micron\ silicate feature. \label{tab:fit_results}",
+            },
             overwrite=True,
         )
 
@@ -1008,14 +1038,8 @@ def main():
     # plt.ylim(3.2e6, 3.4e6)
     # plt.show()
 
-    # obtain the table with extinction properties
-    ext_table = Table.read(
-        "/Users/mdecleir/Documents/MEAD/Literature_data/Gordon+2009_tab2.dat",
-        format="ascii",
-    )
-
     # fit all features for all stars
-    fit_all(datapath, stars, ext_table)
+    fit_all(datapath, stars)
 
 
 if __name__ == "__main__":
