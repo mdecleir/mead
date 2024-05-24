@@ -5,11 +5,12 @@ import numpy as np
 
 from astropy.table import Table, join
 from matplotlib import pyplot as plt
+from scipy.stats import spearmanr
 
 
-def plot_feat_AV(outpath, feat_name, data):
+def plot_feat_AV_RV(outpath, feat_name, data):
     """
-    Function to plot the feature properties vs. A(V)
+    Function to plot the feature properties vs. A(V) and R(V)
 
     Parameters
     ----------
@@ -28,41 +29,62 @@ def plot_feat_AV(outpath, feat_name, data):
     """
     # create the figure
     fs = 18
-    fig, axes = plt.subplots(2, 2, figsize=(11, 8), sharex=True)
+    fig, axes = plt.subplots(4, 2, figsize=(12, 16), sharex="col", sharey="row")
 
-    # calculate the uncertainty on A(V)
-    AV_err = np.sqrt(data["AV_runc"] ** 2 + data["AV_sunc"] ** 2)
+    # plot the data
+    xpars = ["AV", "RV"]
+    xlabels = ["A(V)", "R(V)"]
+    ypars = ["amplitude", "wavelength(micron)", "std(micron)", "area(cm-1)"]
+    ylabels = [
+        "optical depth",
+        "central wavelength ($\mu$m)",
+        "standard deviation ($\mu$m)",
+        "integrated area (cm$^{-1}$)",
+    ]
+    for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
+        # calculate the uncertainty on the x-axis value
+        x_unc = np.sqrt(data[xpar + "_runc"] ** 2 + data[xpar + "_sunc"] ** 2)
 
-    # plot the feature properties vs. A(V)
-    props = ["amplitude", "wavelength(micron)", "std(micron)", "area(cm-1)"]
-    for prop, ax in zip(props, axes.flat):
-        # obtain the y-axis uncertainties
-        if "(" in prop:
-            index = prop.find("(")
-            yerr = (
-                data[prop[:index] + "_unc_min" + prop[index:]],
-                data[prop[:index] + "_unc_plus" + prop[index:]],
+        # add the x-axis label
+        axes[3, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                y_unc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+
+            # plot the data
+            axes[j, i].errorbar(
+                data[xpar],
+                data[ypar],
+                xerr=x_unc,
+                yerr=y_unc,
+                fmt="ok",
             )
-        else:
-            yerr = data[prop + "_unc_min"], data[prop + "_unc_plus"]
 
-        ax.errorbar(
-            data["AV"],
-            data[prop],
-            xerr=AV_err,
-            yerr=yerr,
-            fmt="ok",
-        )
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.9,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
     # finalize and save the figure
-    axes[1, 0].set_xlabel("A(V)", fontsize=fs)
-    axes[1, 1].set_xlabel("A(V)", fontsize=fs)
-    axes[0, 0].set_ylabel("optical depth", fontsize=fs)
-    axes[0, 1].set_ylabel(r"central wavelength ($\mu$m)", fontsize=fs)
-    axes[1, 0].set_ylabel(r"standard deviation ($\mu$m)", fontsize=fs)
-    axes[1, 1].set_ylabel("integrated area (cm$^{-1}$)", fontsize=fs)
-    plt.subplots_adjust(hspace=0, wspace=0.3)
-    plt.savefig(outpath + feat_name + "_AV.pdf", bbox_inches="tight")
+    plt.subplots_adjust(hspace=0, wspace=0)
+    plt.savefig(outpath + feat_name + "_AV_RV.pdf", bbox_inches="tight")
 
 
 def plot_feat_col(outpath, feat_name, data):
@@ -141,7 +163,7 @@ def main():
 
     # create plots vs. A(V)
     # plot_feat_AV(outpath, "58", joined_ext_58)
-    plot_feat_AV(outpath, "10", joined_ext_10[~bad_mask])
+    plot_feat_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
 
     # create plot vs. dust column densities
     # plot_feat_col(outpath, "10", joined_dep_10)
