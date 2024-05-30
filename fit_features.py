@@ -736,11 +736,20 @@ def fit_10(datapath, star):
 
     Returns
     -------
+    waves : numpy.ndarray
+        Relevant wavelengths
+
+    taus : numpy.ndarray
+        Optical depths at wavelengths in waves
+
     fit_result_feat_emcee : astropy model
         MCMC fitting results
 
     chains : numpy.ndarray
         MCMC chains (for amplitude, mean and stddev in that order)
+
+    chi2 : float
+        Chi square of fitting
 
     Saves plots with data and fitted models
     """
@@ -846,10 +855,10 @@ def fit_10(datapath, star):
         "10",
     )
 
-    return fit_result_feat_emcee, chains, chi2
+    return waves, taus, fit_result_feat_emcee, chains, chi2
 
 
-def fit_all(datapath, stars):
+def fit_all(datapath, stars, sort_idx):
     """
     Fit all features for all stars
 
@@ -860,6 +869,9 @@ def fit_all(datapath, stars):
 
     stars : list
         Star names
+
+    sort_idx : list
+        Index for plotting order
 
     Returns
     -------
@@ -924,11 +936,14 @@ def fit_all(datapath, stars):
             dtype=("str", "str", "str", "str", "str"),
         )
 
+        # create a figure to plot the feature
+        fig, ax = plt.subplots(figsize=(8, 14))
+
         # fit the feature for all stars
-        for star in stars:
+        for i, star in enumerate(stars):
             print(star)
             func = eval("fit_" + feat_name)
-            fit_result, chains, chi2 = func(datapath, star)
+            waves, taus, fit_result, chains, chi2 = func(datapath, star)
             print(fit_result, chi2)
 
             # obtain the results
@@ -985,6 +1000,17 @@ def fit_all(datapath, stars):
                 )
             )
 
+            # plot the feature and fitted profile
+            ax.plot(waves, taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
+            ax.plot(waves, fit_result(waves) + sort_idx[i] * 0.07, c="crimson", lw=2)
+
+        # finalize and save the figure
+        fs = 20
+        ax.set_xlabel("$\lambda$ ($\mu$m)", fontsize=fs)
+        ax.set_ylabel(r"$\tau$($\lambda$) + offset", fontsize=fs)
+        ax.set_ylim(-0.05, None)
+        fig.savefig(datapath + feat_name + "_all.pdf", bbox_inches="tight")
+
         # write the tables to files
         table_txt.write(
             datapath + "fit_results_" + feat_name + ".txt",
@@ -1015,7 +1041,7 @@ def main():
 
     # list the stars
     stars = [
-        "HD014434",
+        #  "HD014434",
         "HD038087",
         "HD073882",
         "HD147888",
@@ -1024,6 +1050,18 @@ def main():
         "HD206267",
         "HD207198",
         "HD216898",
+    ]
+
+    # sort the stars by silicate feature strength by giving them an index. 0=weakest feature.
+    sort_idx = [  # "HD014434",
+        3,
+        7,
+        5,
+        0,
+        4,
+        1,
+        2,
+        6,
     ]
 
     # obtain and plot a stellar model
@@ -1038,8 +1076,8 @@ def main():
     # plt.ylim(3.2e6, 3.4e6)
     # plt.show()
 
-    # fit all features for all stars
-    fit_all(datapath, stars)
+    # fit and plot all features for all stars
+    fit_all(datapath, stars, sort_idx)
 
 
 if __name__ == "__main__":
