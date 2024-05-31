@@ -42,7 +42,7 @@ def plot_feat(outpath, feat_name, data):
     ylabels = [
         r"$\lambda_0$ ($\mu$m)",
         r"$\sigma$ ($\mu$m)",
-        "$A$ (cm$^{-1}$)",
+        r"$A$ (cm$^{-1}$)",
     ]
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # obtain the x-axis uncertainties
@@ -121,20 +121,23 @@ def plot_feat_AV_RV(outpath, feat_name, data):
     -------
     Plots with feature properties vs. A(V) and R(V)
     """
-    # create the figure
-    fs = 18
-    fig, axes = plt.subplots(4, 2, figsize=(12, 16), sharex="col", sharey="row")
-
-    # plot the data
+    # define the data to be plotted
     xpars = ["AV", "RV"]
     xlabels = ["A(V)", "R(V)"]
     ypars = ["amplitude", "wavelength(micron)", "std(micron)", "area(cm-1)"]
     ylabels = [
-        "optical depth",
-        "central wavelength ($\mu$m)",
-        "standard deviation ($\mu$m)",
-        "integrated area (cm$^{-1}$)",
+        r"$\tau(\lambda_0)$",
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\sigma$ ($\mu$m)",
+        r"$A$ (cm$^{-1}$)",
     ]
+
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(
+        len(ypars), len(xpars), figsize=(10, 16), sharex="col", sharey="row"
+    )
+
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # calculate the uncertainty on the x-axis value
         x_unc = np.sqrt(data[xpar + "_runc"] ** 2 + data[xpar + "_sunc"] ** 2)
@@ -153,7 +156,7 @@ def plot_feat_AV_RV(outpath, feat_name, data):
             else:
                 y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
-            # plot the data
+            # plot the properties
             axes[j, i].errorbar(
                 data[xpar],
                 data[ypar],
@@ -177,8 +180,99 @@ def plot_feat_AV_RV(outpath, feat_name, data):
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
     # finalize and save the figure
-    plt.subplots_adjust(hspace=0, wspace=0)
-    plt.savefig(outpath + feat_name + "_AV_RV.pdf", bbox_inches="tight")
+    fig.subplots_adjust(hspace=0, wspace=0)
+    fig.savefig(outpath + feat_name + "_AV_RV.pdf", bbox_inches="tight")
+
+
+def plot_feat_norm_AV_RV(outpath, feat_name, data):
+    """
+    Function to plot the normalized feature properties vs. A(V) and R(V)
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    feat_name : string
+        Reference name for the feature
+
+    data : astropy Table
+        Data to plot
+
+    Returns
+    -------
+    Plots with normalized feature properties vs. A(V) and R(V)
+    """
+    # define the data to be plotted
+    xpars = ["AV", "RV"]
+    xlabels = ["$A(V)$", "$R(V)$"]
+    ypars = ["amplitude", "area(cm-1)"]
+    ylabels = [
+        r"$\tau(\lambda_0)/A(V)$",
+        r"$A/A(V)$ (cm$^{-1}$)",
+    ]
+
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(
+        len(ypars), len(xpars), figsize=(10, 10), sharex="col", sharey="row"
+    )
+
+    for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
+        # calculate the uncertainty on the x-axis value
+        x_unc = np.sqrt(data[xpar + "_runc"] ** 2 + data[xpar + "_sunc"] ** 2)
+
+        # add the x-axis label
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                y_unc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+            AV_unc = np.sqrt(data["AV_runc"] ** 2 + data["AV_sunc"] ** 2)
+            y_min = (
+                data[ypar]
+                / data["AV"]
+                * np.sqrt((y_unc[0] / data[ypar]) ** 2 + (AV_unc / data["AV"]) ** 2)
+            )
+            y_max = (
+                data[ypar]
+                / data["AV"]
+                * np.sqrt((y_unc[1] / data[ypar]) ** 2 + (AV_unc / data["AV"]) ** 2)
+            )
+
+            # plot the normalized properties
+            axes[j, i].errorbar(
+                data[xpar],
+                data[ypar] / data["AV"],
+                xerr=x_unc,
+                yerr=(y_min, y_max),
+                fmt="ok",
+            )
+
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.9,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar] / data["AV"])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+
+    # finalize and save the figure
+    fig.subplots_adjust(hspace=0, wspace=0)
+    fig.savefig(outpath + feat_name + "_norm_AV_RV.pdf", bbox_inches="tight")
 
 
 def plot_feat_col(outpath, feat_name, data):
@@ -255,12 +349,13 @@ def main():
     bad_star = "HD014434"
     bad_mask = feat_10["name"] == bad_star
 
-    # plot the feature properties
+    # plot the feature properties against each other
     plot_feat(outpath, "10", feat_10[~bad_mask])
 
     # create plots vs. A(V) and R(V)
     # plot_feat_AV(outpath, "58", joined_ext_58)
     plot_feat_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
+    plot_feat_norm_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
 
     # create plot vs. dust column densities
     # plot_feat_col(outpath, "10", joined_dep_10)
