@@ -388,6 +388,105 @@ def plot_feat_FM90(outpath, feat_name, data):
     fig.savefig(outpath + feat_name + "_FM90.pdf", bbox_inches="tight")
 
 
+def plot_feat_H(outpath, feat_name, data):
+    """
+    Function to plot the feature properties vs. the hydrogen measurements
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    feat_name : string
+        Reference name for the feature
+
+    data : astropy Table
+        Data to plot
+
+    Returns
+    -------
+    Plots with feature properties vs. hydrogen measurements
+    """
+    # define the data to be plotted
+    xpars = [
+        "logNH",
+        "logNHI",
+        "logNH2",
+        "fH2",
+    ]
+    xlabels = [
+        "log(N(H))",
+        "log(N(HI))",
+        "log(N(H$_2$))",
+        "f(H$_2$) = 2N(H$_2$)/N(H)",
+    ]
+
+    ypars = [
+        "amp/AV",
+        "wavelength(micron)",
+        "std(micron)",
+        "area/AV",
+    ]
+    ylabels = [
+        r"$\tau(\lambda_0)/A(V)$",
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\sigma$ ($\mu$m)",
+        r"$A/A(V)$ (cm$^{-1}$)",
+    ]
+
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
+    )
+
+    for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
+        # add the x-axis label
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                yunc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+
+            # plot the properties
+            axes[j, i].errorbar(
+                data[xpar],
+                data[ypar],
+                xerr=data["e_" + xpar],
+                yerr=yunc,
+                fmt="ok",
+            )
+
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.9,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+
+    # finalize and save the figure
+    fig.subplots_adjust(hspace=0, wspace=0)
+    fig.savefig(outpath + feat_name + "_H.pdf", bbox_inches="tight")
+
+
 def plot_feat_col(outpath, feat_name, data):
     """
     Function to plot the dust column densities vs. the integrated area of the feature
@@ -451,6 +550,12 @@ def main():
         format="ascii",
     )
 
+    # obtain the hydrogen measurements
+    hyd_table = Table.read(
+        litpath + "VanDePutte+2023_tab2.dat",
+        format="ascii",
+    )
+
     # obtain the depletion measurements
     dep_table = Table.read(
         "/Users/mdecleir/stis_depletions/depletions.dat", format="ascii"
@@ -487,6 +592,16 @@ def main():
         + (AV_unc / joined_fm90_10["AV"]) ** 2
     )
 
+    # merge more tables
+    joined_hyd_10 = join(joined_fm90_10, hyd_table, keys_left="Name", keys_right="Star")
+
+    # calculate the uncertainty on f(H2)
+    joined_hyd_10["e_fH2"] = (
+        joined_hyd_10["fH2"]
+        * np.log(10)
+        * np.sqrt(joined_hyd_10["e_logNH2"] ** 2 + joined_hyd_10["e_logNH"] ** 2)
+    )
+
     # define the stars that should be masked
     bad_star = "HD014434"
     bad_mask = feat_10["name"] == bad_star
@@ -501,6 +616,9 @@ def main():
 
     # create plots vs. the FM90 parameters
     plot_feat_FM90(outpath, "10", joined_fm90_10[~bad_mask])
+
+    # create plots vs. hydrogen measurements
+    plot_feat_H(outpath, "10", joined_hyd_10[~bad_mask])
 
     # create plot vs. dust column densities
     # plot_feat_col(outpath, "10", joined_dep_10)
