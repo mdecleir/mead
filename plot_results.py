@@ -487,9 +487,9 @@ def plot_feat_H(outpath, feat_name, data):
     fig.savefig(outpath + feat_name + "_H.pdf", bbox_inches="tight")
 
 
-def plot_feat_col(outpath, feat_name, data):
+def plot_feat_dcol(outpath, feat_name, data):
     """
-    Function to plot the dust column densities vs. the integrated area of the feature
+    Function to plot the feature properties vs. the dust column densities
 
     Parameters
     ----------
@@ -504,27 +504,75 @@ def plot_feat_col(outpath, feat_name, data):
 
     Returns
     -------
-        Plot with dust column densities vs. the integrated area of the feature
+    Plots with feature properties vs. dust column densities
     """
+    # define the data to be plotted
+    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
+    xlabels = ["N(Mg)$_{dust}$", "N(Fe)$_{dust}$", "N(O)$_{dust}$"]
+
+    ypars = [
+        "amplitude",
+        "wavelength(micron)",
+        "std(micron)",
+        "area(cm-1)",
+    ]
+    ylabels = [
+        r"$\tau(\lambda_0)$",
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\sigma$ ($\mu$m)",
+        r"$A$ (cm$^{-1}$)",
+    ]
+
     # create the figure
     fs = 18
-    fig, axes = plt.subplots(3, figsize=(7, 8), sharex=True)
+    fig, axes = plt.subplots(
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
+    )
 
-    # plot elemental dust column densities vs. integrated area
-    elems = ["Mg", "Fe", "O"]
-    for elem, ax in zip(elems, axes.flat):
-        ax.errorbar(
-            data["area(cm-1)"],
-            data["N(" + elem + ")_d"],
-            #  xerr=[data["area_unc_min(cm-1)"], data["area_unc_plus(cm-1)"]],
-            fmt="ok",
-        )
-        ax.set_ylabel("N(" + elem + ")$_{dust}$", fontsize=fs)
+    for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
+        # add the x-axis label
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                yunc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+
+            # plot the properties
+            axes[j, i].errorbar(
+                data[xpar],
+                data[ypar],
+                yerr=yunc,
+                fmt="ok",
+            )
+
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.9,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
     # finalize and save the figure
-    axes[2].set_xlabel("integrated area (cm$^{-1}$)", fontsize=fs)
-    plt.subplots_adjust(hspace=0, wspace=0.3)
-    plt.savefig(outpath + feat_name + "_col.pdf", bbox_inches="tight")
+    fig.subplots_adjust(hspace=0, wspace=0)
+    fig.savefig(outpath + feat_name + "_dcol.pdf", bbox_inches="tight")
 
 
 def main():
@@ -569,7 +617,6 @@ def main():
     joined_ext_58 = join(ext_table, feat_58, keys_left="Name", keys_right="name")
     joined_ext_10 = join(ext_table, feat_10, keys_left="Name", keys_right="name")
     joined_fm90_10 = join(joined_ext_10, fm90_table, keys="Name")
-    joined_dep_10 = join(dep_table, feat_10, keys_left="star", keys_right="name")
 
     # add extra columns with normalized feature strength and area and uncertainties
     joined_fm90_10["amp/AV"] = joined_fm90_10["amplitude"] / joined_fm90_10["AV"]
@@ -594,6 +641,7 @@ def main():
 
     # merge more tables
     joined_hyd_10 = join(joined_fm90_10, hyd_table, keys_left="Name", keys_right="Star")
+    joined_all_10 = join(joined_hyd_10, dep_table, keys_left="Name", keys_right="star")
 
     # calculate the uncertainty on f(H2)
     joined_hyd_10["e_fH2"] = (
@@ -620,8 +668,8 @@ def main():
     # create plots vs. hydrogen measurements
     plot_feat_H(outpath, "10", joined_hyd_10[~bad_mask])
 
-    # create plot vs. dust column densities
-    # plot_feat_col(outpath, "10", joined_dep_10)
+    # create plots vs. dust column densities
+    plot_feat_dcol(outpath, "10", joined_all_10[~bad_mask])
 
 
 if __name__ == "__main__":
