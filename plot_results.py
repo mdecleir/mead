@@ -575,6 +575,94 @@ def plot_feat_dcol(outpath, feat_name, data):
     fig.savefig(outpath + feat_name + "_dcol.pdf", bbox_inches="tight")
 
 
+def plot_feat_norm_dcol(outpath, feat_name, data):
+    """
+    Function to plot the (normalized) feature properties vs. the normalized dust column densities
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    feat_name : string
+        Reference name for the feature
+
+    data : astropy Table
+        Data to plot
+
+    Returns
+    -------
+    Plots with (normalized) feature properties vs. normalized dust column densities
+    """
+    # define the data to be plotted
+    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
+    xlabels = ["N(Mg)$_{dust}/A(V)$", "N(Fe)$_{dust}/A(V)$", "N(O)$_{dust}/A(V)$"]
+
+    ypars = [
+        "amp/AV",
+        "wavelength(micron)",
+        "std(micron)",
+        "area/AV",
+    ]
+    ylabels = [
+        r"$\tau(\lambda_0)/A(V)$",
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\sigma$ ($\mu$m)",
+        r"$A/A(V)$ (cm$^{-1}$)",
+    ]
+
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
+    )
+
+    for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
+        # add the x-axis label
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                yunc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+
+            # plot the properties
+            axes[j, i].errorbar(
+                data[xpar] / data["AV"],
+                data[ypar],
+                yerr=yunc,
+                fmt="ok",
+            )
+
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.9,
+                r"$\rho = %.2f$" % spearmanr(data[xpar] / data["AV"], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+
+    # finalize and save the figure
+    fig.subplots_adjust(hspace=0, wspace=0)
+    fig.savefig(outpath + feat_name + "_norm_dcol.pdf", bbox_inches="tight")
+
+
 def main():
     # plotting settings for uniform plots
     fs = 18
@@ -670,6 +758,7 @@ def main():
 
     # create plots vs. dust column densities
     plot_feat_dcol(outpath, "10", joined_all_10[~bad_mask])
+    plot_feat_norm_dcol(outpath, "10", joined_all_10[~bad_mask])
 
 
 if __name__ == "__main__":
