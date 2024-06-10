@@ -998,6 +998,11 @@ def fit_all(datapath, stars, sort_idx):
             # plot the feature and fitted profile
             ax.plot(waves, taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
             ax.plot(waves, fit_result(waves) + sort_idx[i] * 0.07, c="crimson", lw=2)
+            ax.annotate(
+                star,
+                (waves[0] - 0.15, fit_result(waves[0]) + sort_idx[i] * 0.07 + 0.015),
+                fontsize=16,
+            )
 
         # finalize and save the figure
         fs = 20
