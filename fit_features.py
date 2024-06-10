@@ -114,8 +114,6 @@ def rebin_constres(data, waverange, resolution):
             sweights = np.nansum(weights)
             new_fluxes[k] = np.nansum(weights * fluxes[bin_mask]) / sweights
             new_uncs[k] = 1 / np.sqrt(sweights)
-        else:
-            print("Some bins are empty, you might want to lower the resolution.")
 
     return (new_waves, new_fluxes, new_uncs)
 
@@ -757,38 +755,24 @@ def fit_10(datapath, star):
     starname = "hd" + star.split("D")[1].strip("0")
     data = Table.read(datapath + "MIRI/v3/" + starname + "_nircam_mrs_merged.fits")
     waves = data["wavelength"]
-    fluxes = data["flux"]
 
-    # rebin the spectrum
-    waves, fluxes, uncs = rebin_constres(data, (6, 14), 500)
-
-    # define masks for the continuum fitting
-    range_mask = (waves > 6) & (waves <= 14)
-    feat_reg_mask = (waves > 7.5) & (waves <= 12.5)
-    stellar_lines_out = ((waves > 7.424) & (waves <= 7.538)) | (
-        (waves > 12.570) & (waves <= 12.618)
+    # mask out the stellar lines
+    stellar_mask = (
+        ((waves > 6.924) & (waves <= 6.967))
+        | ((waves > 7.410) & (waves <= 7.559))
+        | ((waves > 8.732) & (waves <= 8.775))
+        | ((waves > 9.381) & (waves <= 9.403))
+        | ((waves > 9.665) & (waves <= 9.741))
+        | ((waves > 10.446) & (waves <= 10.575))
+        | ((waves > 11.251) & (waves <= 11.387))
+        | ((waves > 12.251) & (waves <= 12.453))
+        | ((waves > 12.570) & (waves <= 12.618))
+        | ((waves > 13.086) & (waves <= 13.189))
     )
-    # feature region per star:
-    # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
     # stellar line masks per star:
     # 7.435-7.522, 7.449-7.471, 7.443-7.538, 7.434-7.520, 7.454-7.467, 7.424-7.522, 7.428-7.473, 7.453-7.462
     # 7.497-7.512, 7.494-7.512
     # 12.570-12.618
-    cont_mask = range_mask & ~feat_reg_mask & ~stellar_lines_out & ~np.isnan(fluxes)
-
-    # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
-    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, range_mask)
-
-    # mask the stellar lines inside the feature and define the mask for the feature fitting
-    stellar_lines_in = (
-        (waves > 7.424) & (waves <= 7.538)
-        | ((waves > 8.732) & (waves <= 8.775))
-        | ((waves > 9.381) & (waves <= 9.403))
-        | ((waves > 10.447) & (waves <= 10.575))
-        | ((waves > 11.251) & (waves <= 11.373))
-        | ((waves > 12.312) & (waves <= 12.445))
-    )
-    # stellar line masks per star:
     # 8.741-8.772, 8.732-8.775, 8.749-8.766
     # 9.381-9.397, 9.381-9.403
     # 10.447-10.575, 10.488-10.505
@@ -796,16 +780,27 @@ def fit_10(datapath, star):
     # 12.352-12.424, 12.355-12.384, 12.312-12.429, 12.357-12.415, 12.312-12.445, 12.354-12.402, 12.355-12.381
 
     # mask the suspicious data between 11 and 12 micron
-    bad_data = (waves > 11.3) & (waves <= 12.1)
+    bad_mask = (waves > 11.15) & (waves <= 12.1)
     # mask per star
-    # 11.541-11.947, 11.462-12.013, 11.339-12.080, 11.355-12.096,
+    # 11.541-11.947, 11.462-12.013, 11.339-12.080, 11.355-12.096
 
-    feat_fit_mask = (
-        feat_reg_mask[range_mask]
-        & ~stellar_lines_in[range_mask]
-        & ~bad_data[range_mask]
-        & ~np.isnan(taus)
+    # rebin the spectrum
+    waves, fluxes, uncs = rebin_constres(
+        data[(~stellar_mask) & (~bad_mask)], (6, 14), 500
     )
+
+    # define masks for the continuum fitting
+    range_mask = (waves > 6) & (waves <= 14)
+    feat_reg_mask = (waves > 7.5) & (waves <= 12.5)
+    # feature region per star:
+    # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
+    cont_mask = range_mask & ~feat_reg_mask & ~np.isnan(fluxes)
+
+    # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, range_mask)
+
+    # define the mask for the feature fitting
+    feat_fit_mask = feat_reg_mask[range_mask] & ~np.isnan(taus)
 
     # define the uncertainties
     emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
@@ -962,10 +957,10 @@ def fit_all(datapath, stars, sort_idx):
                 )
 
             # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
-            # dnu = 1/(lambda**2) * dlambda * 1e4
+            # dnu = 1e4 dlambda / lambda^2
             # lambda = mean = chains[:,1]
             # dlambda = stddev = chains[:,2]
-            stddev_wavenm = 1.0 / (chains[:, 1] ** 2) * chains[:, 2] * 1e4
+            stddev_wavenm = 1e4 * chains[:, 2] / (chains[:, 1] ** 2)
 
             # calculate the integrated area (in cm^-1)
             # area = amplitude * stddev (in cm^-1)* sqrt(2 * pi)
@@ -1006,7 +1001,7 @@ def fit_all(datapath, stars, sort_idx):
 
         # finalize and save the figure
         fs = 20
-        ax.set_xlabel("$\lambda$ ($\mu$m)", fontsize=fs)
+        ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
         ax.set_ylabel(r"$\tau$($\lambda$) + offset", fontsize=fs)
         ax.set_ylim(-0.05, None)
         fig.savefig(datapath + feat_name + "_all.pdf", bbox_inches="tight")
@@ -1041,7 +1036,7 @@ def main():
 
     # list the stars
     stars = [
-        #  "HD014434",
+        # "HD014434",
         "HD038087",
         "HD073882",
         "HD147888",
