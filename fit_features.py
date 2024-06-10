@@ -2,6 +2,7 @@
 
 # import the necessary packages
 import numpy as np
+import os
 
 from astropy.table import Table
 from astropy.modeling.models import custom_model, Drude1D, Gaussian1D, Polynomial1D
@@ -118,7 +119,7 @@ def rebin_constres(data, waverange, resolution):
     return (new_waves, new_fluxes, new_uncs)
 
 
-def fit_cont(waves, fluxes, cont_mask, range_mask):
+def fit_cont(waves, fluxes, cont_mask):
     """
     Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
 
@@ -133,9 +134,6 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
     cont_mask : numpy.ndarray
         Mask for data to use in the continuum fitting
 
-    range_mask : numpy.ndarray
-        Mask for all the data in the wavelength range of interest
-
     Returns
     -------
     taus : astropy Table Column
@@ -148,7 +146,7 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
         Plotting axes of the figure
     """
     # fit the continuum
-    pol_mod = Polynomial1D(3)
+    pol_mod = Polynomial1D(1)
     lin_fitter = LinearLSQFitter()
     out_fitter = FittingWithOutlierRemoval(lin_fitter, sigma_clip, niter=3, sigma=3)
 
@@ -165,9 +163,7 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
         figsize=(9, 10),
         gridspec_kw={"hspace": 0},
     )
-    axes[0].plot(
-        waves[range_mask], fluxes[range_mask] * waves[range_mask] ** 2, c="k", alpha=0.9
-    )
+    axes[0].plot(waves, fluxes * waves ** 2, c="k", alpha=0.9)
 
     # plot the data points that were used in the continuum fitting
     axes[0].plot(
@@ -191,8 +187,8 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
 
     # plot the continuum fit
     axes[0].plot(
-        waves[range_mask],
-        fit_result_cont(waves[range_mask]),
+        waves,
+        fit_result_cont(waves),
         c="tab:orange",
         label="cont. fit",
     )
@@ -200,21 +196,19 @@ def fit_cont(waves, fluxes, cont_mask, range_mask):
     axes[0].set_ylabel(r"$\lambda^2 F(\lambda)\: [\mu m^2 \:Jy]$", fontsize=fs)
 
     # normalize the fluxes
-    norm_fluxes = (
-        fluxes[range_mask] * waves[range_mask] ** 2 / fit_result_cont(waves[range_mask])
-    )
+    norm_fluxes = fluxes * waves ** 2 / fit_result_cont(waves)
 
     # convert to optical depth (only exists in range_mask)
     taus = np.log(1 / norm_fluxes)
 
     # plot the optical depth
-    axes[1].plot(waves[range_mask], taus, c="k", alpha=0.9)
+    axes[1].plot(waves, taus, c="k", alpha=0.9)
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
     axes[1].axhline(ls=":", c="k")
 
     # calculate the empirical uncertainy on the optical depth in clean regions
-    unc = np.std(taus[cont_mask[range_mask]])
+    unc = np.std(taus[cont_mask])
 
     return taus, unc, axes
 
@@ -297,7 +291,11 @@ def fit_feature(
 
     # plot the feature fit and save the figure
     axes[1].plot(plot_waves, fit_result_feat_emcee(plot_waves), c="crimson", lw=2)
-    plt.savefig(plotpath + star + "_" + feat_name + "_fit.pdf", bbox_inches="tight")
+    outname = plotpath + star + "_" + feat_name + "_fit.pdf"
+    # rename the previous version of the plot
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+    plt.savefig(outname, bbox_inches="tight")
 
     # obtain the MCMC chains
     chains = emcee_fitter.fit_info["sampler"].get_chain(
@@ -784,23 +782,23 @@ def fit_10(datapath, star):
     # mask per star
     # 11.541-11.947, 11.462-12.013, 11.339-12.080, 11.355-12.096
 
-    # rebin the spectrum
+    # rebin the spectrum, and select the relevant region
     waves, fluxes, uncs = rebin_constres(
-        data[(~stellar_mask) & (~bad_mask)], (6, 14), 500
+        data[(~stellar_mask) & (~bad_mask)], (7.8, 12.9), 500
     )
 
     # define masks for the continuum fitting
-    range_mask = (waves > 6) & (waves <= 14)
-    feat_reg_mask = (waves > 7.5) & (waves <= 12.5)
+    feat_reg_mask = (waves > 8.3) & (waves <= 12.3)
     # feature region per star:
+    # 8.46-12.3, 8.1-12.19, 8.34-12.18, 8.47-12.1, 8.13-12.21, 8.08-12.11, 8.15-12.22, 8.20-12.33
     # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
-    cont_mask = range_mask & ~feat_reg_mask & ~np.isnan(fluxes)
+    cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
 
     # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
-    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, range_mask)
+    taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
 
     # define the mask for the feature fitting
-    feat_fit_mask = feat_reg_mask[range_mask] & ~np.isnan(taus)
+    feat_fit_mask = feat_reg_mask & ~np.isnan(taus)
 
     # define the uncertainties
     emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
@@ -842,11 +840,11 @@ def fit_10(datapath, star):
         gauss_mod,
         # drude_mod,
         #  drude_asym_mod,
-        waves[range_mask][feat_fit_mask],
+        waves[feat_fit_mask],
         taus[feat_fit_mask],
         emp_uncs,
         axes,
-        waves[range_mask],
+        waves,
         "10",
     )
 
@@ -1009,7 +1007,11 @@ def fit_all(datapath, stars, sort_idx):
         ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
         ax.set_ylabel(r"$\tau$($\lambda$) + offset", fontsize=fs)
         ax.set_ylim(-0.05, None)
-        fig.savefig(datapath + feat_name + "_all.pdf", bbox_inches="tight")
+        outname = datapath + feat_name + "_all.pdf"
+        # rename the previous version of the plot
+        if os.path.isfile(outname):
+            os.rename(outname, outname.split(".")[0] + "_0.pdf")
+        fig.savefig(outname, bbox_inches="tight")
 
         # write the tables to files
         table_txt.write(
