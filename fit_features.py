@@ -14,6 +14,7 @@ from astropy.modeling.fitting import (
 from astropy.stats import sigma_clip
 from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
+from scipy import stats
 
 
 def gamma(x, x_o=1, gamma_o=1, asym=1):
@@ -23,9 +24,9 @@ def gamma(x, x_o=1, gamma_o=1, asym=1):
     return 2 * gamma_o / (1 + np.exp(asym * (x - x_o)))
 
 
-def drude_asymmetric(x, scale=1, x_o=1, gamma_o=1, asym=1):
+def drude_modified(x, scale=1, x_o=1, gamma_o=1, asym=1):
     """
-    "Asymmetric" Drude profile
+    Modified Drude profile
     """
     y = (
         scale
@@ -33,6 +34,10 @@ def drude_asymmetric(x, scale=1, x_o=1, gamma_o=1, asym=1):
         / ((x / x_o - x_o / x) ** 2 + (gamma(x, x_o, gamma_o, asym) / x_o) ** 2)
     )
     return y
+
+
+def gauss_skew_func(x, amplitude=0.1, loc=9, scale=1, alpha=2):
+    return amplitude * stats.skewnorm.pdf(x, alpha, loc=loc, scale=scale)
 
 
 def _wavegrid(waverange, resolution):
@@ -718,7 +723,7 @@ def fit_62(datapath, star):
     return fit_result_feat_emcee, chains
 
 
-def fit_10(datapath, star):
+def fit_10(datapath, star, profile):
     """
     Function to fit the continuum and the feature at 10 micron
 
@@ -729,6 +734,9 @@ def fit_10(datapath, star):
 
     star : string
         Star name
+
+    profile : string
+        Profile to fit to the feature
 
     Returns
     -------
@@ -804,42 +812,56 @@ def fit_10(datapath, star):
     emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
 
     # define the initial model to fit the feature
-    gauss_mod = Gaussian1D(
-        amplitude=0.1,
-        mean=10,
-        stddev=1,
-        bounds={
-            "mean": (9.5, 10.5),
-        },
-    )
-
-    drude_mod = Drude1D(
-        amplitude=0.1,
-        x_0=10,
-        fwhm=2,
-        bounds={
-            "x_0": (9.5, 10.5),
-        },
-    )
-
-    Drude_asym = custom_model(drude_asymmetric)
-    drude_asym_mod = Drude_asym(
-        scale=0.1,
-        x_o=10,
-        gamma_o=2,
-        bounds={
-            "x_o": (9.5, 10.5),
-        },
-    )
+    if profile == "gauss":
+        feat_mod = Gaussian1D(
+            amplitude=0.1,
+            mean=10,
+            stddev=1,
+            bounds={
+                "mean": (9.5, 10.5),
+            },
+        )
+    elif profile == "gauss_skew":
+        gauss_skew_mod = custom_model(gauss_skew_func)
+        feat_mod = gauss_skew_mod(
+            amplitude=0.1,
+            loc=9,
+            scale=1,
+            alpha=2,
+            bounds={
+                "loc": (6, 10),
+            },
+        )
+    elif profile == "drude":
+        feat_mod = Drude1D(
+            amplitude=0.1,
+            x_0=10,
+            fwhm=2,
+            bounds={
+                "x_0": (9.5, 10.5),
+            },
+        )
+    elif profile == "drude_modif":
+        Drude_mod = custom_model(drude_modified)
+        feat_mod = Drude_mod(
+            scale=0.1,
+            x_o=10,
+            gamma_o=2,
+            bounds={
+                "x_o": (9.5, 10.5),
+            },
+        )
+    else:
+        print(
+            "This profile is not valid. Please choose between gauss, gauss_skew, drude or drude_modif."
+        )
 
     # fit and plot the feature
     fit_result_feat_emcee, chains, chi2 = fit_feature(
         datapath + "MIRI/",
         datapath,
         star,
-        gauss_mod,
-        # drude_mod,
-        #  drude_asym_mod,
+        feat_mod,
         waves[feat_fit_mask],
         taus[feat_fit_mask],
         emp_uncs,
@@ -873,12 +895,14 @@ def fit_all(datapath, stars, sort_idx):
     # list the features to be fitted
     # features = ["34", "58", "62", "10"]
     features = ["10"]
+    profiles = ["gauss_skew"]
 
-    for feat_name in features:
+    for feat_name, profile in zip(features, profiles):
         print("Fitting " + feat_name + " micron feature")
+
         # create a table to store the results
-        table_txt = Table(
-            names=(
+        if profile == "gauss":
+            names = (
                 "name",
                 "amplitude",
                 "amplitude_unc_min",
@@ -889,34 +913,37 @@ def fit_all(datapath, stars, sort_idx):
                 "std(micron)",
                 "std_unc_min(micron)",
                 "std_unc_plus(micron)",
-                # "asym",
-                # "asymm",
-                # "asymp",
                 "area(cm-1)",
                 "area_unc_min(cm-1)",
                 "area_unc_plus(cm-1)",
                 "chi2",
-            ),
-            dtype=(
-                "str",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                "float64",
-                # "float64",
-                # "float64",
-                # "float64",
-            ),
-        )
+            )
+        elif profile == "gauss_skew":
+            names = (
+                "name",
+                "amplitude",
+                "amplitude_unc_min",
+                "amplitude_unc_plus",
+                "location(micron)",
+                "location_unc_min(micron)",
+                "location_unc_plus(micron)",
+                "scale(micron)",
+                "scale_unc_min(micron)",
+                "scale_unc_plus(micron)",
+                "alpha",
+                "alpha_unc_min",
+                "alpha_unc_plus",
+                "x_0(micron)",
+                "x_0_unc_min(micron)",
+                "x_0_unc_plus(micron)",
+                # "area(cm-1)",
+                # "area_unc_min(cm-1)",
+                # "area_unc_plus(cm-1)",
+                "chi2",
+            )
+        dtypes = np.full(len(names), "float64")
+        dtypes[0] = "str"
+        table_txt = Table(names=names, dtype=dtypes)
 
         table_lat = Table(
             names=(
@@ -924,9 +951,16 @@ def fit_all(datapath, stars, sort_idx):
                 r"$\tau$($\lambda_0$)",
                 r"$\lambda_0$(\micron)",
                 r"$\sigma$(\micron)",
-                r"$A$(cm$^{-1}$)",
+                #  r"$A$(cm$^{-1}$)",
+                "gamma",
             ),
-            dtype=("str", "str", "str", "str", "str"),
+            dtype=(
+                "str",
+                "str",
+                "str",
+                "str",
+                "str",
+            ),  # "str"),
         )
 
         # create a figure to plot the feature
@@ -936,7 +970,7 @@ def fit_all(datapath, stars, sort_idx):
         for i, star in enumerate(stars):
             print(star)
             func = eval("fit_" + feat_name)
-            waves, taus, fit_result, chains, chi2 = func(datapath, star)
+            waves, taus, fit_result, chains, chi2 = func(datapath, star, profile)
             print(fit_result, chi2)
 
             # obtain the results
@@ -954,44 +988,68 @@ def fit_all(datapath, stars, sort_idx):
                     + "}"
                 )
 
-            # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
-            # dnu = 1e4 dlambda / lambda^2
-            # lambda = mean = chains[:,1]
-            # dlambda = stddev = chains[:,2]
-            stddev_wavenm = 1e4 * chains[:, 2] / (chains[:, 1] ** 2)
+            if profile == "gauss":
+                # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
+                # dnu = 1e4 dlambda / lambda^2
+                # lambda = mean = chains[:,1]
+                # dlambda = stddev = chains[:,2]
+                stddev_wavenm = 1e4 * chains[:, 2] / (chains[:, 1] ** 2)
 
-            # calculate the integrated area (in cm^-1)
-            # area = amplitude * stddev (in cm^-1)* sqrt(2 * pi)
-            # amplitude = chains[:,0]
-            area_chain = chains[:, 0] * stddev_wavenm * np.sqrt(2 * np.pi)
-            area16, area, area84 = np.percentile(area_chain, [16, 50, 84])
-            area_unc_min = area - area16
-            area_unc_plus = area84 - area
-
-            # add the results to the tables
-            table_txt.add_row(
-                (
-                    star,
-                    *result_list,
-                    area,
-                    area_unc_min,
-                    area_unc_plus,
-                    chi2,
+                # calculate the integrated area (in cm^-1)
+                # area = amplitude * stddev (in cm^-1)* sqrt(2 * pi)
+                # amplitude = chains[:,0]
+                area_chain = chains[:, 0] * stddev_wavenm * np.sqrt(2 * np.pi)
+                area16, area, area84 = np.percentile(area_chain, [16, 50, 84])
+                area_unc_min = area - area16
+                area_unc_plus = area84 - area
+                result_list.extend(
+                    [
+                        area,
+                        area_unc_min,
+                        area_unc_plus,
+                    ]
                 )
-            )
-
-            table_lat.add_row(
-                (
-                    star,
-                    *lat_list,
+                lat_list.append(
                     "{:.2f}".format(area)
                     + "_{-"
                     + "{:.2f}".format(area_unc_min)
                     + "}^{+"
                     + "{:.2f}".format(area_unc_plus)
-                    + "}",
+                    + "}"
                 )
-            )
+
+            elif profile == "gauss_skew":
+                amplitudes = chains[:, 0]
+                locs = chains[:, 1]
+                scales = chains[:, 2]
+                alphas = chains[:, 3]
+                # calculate the mode (i.e. peak wavelength) (in micron)
+                # delta = alpha / sqrt(1+alpha^2)
+                # m0 = sqrt(2/pi) * delta - (1 - pi/4) * ((sqrt(2/pi)*delta)^3 / (1-2/pi*delta^2)) - sign(alpha)/2 * exp(-2pi/|alpha|))
+                # mode = location + scale * m0
+                deltas = alphas / (np.sqrt(1 + alphas ** 2))
+                m0s = (
+                    np.sqrt(2 / np.pi) * deltas
+                    - (1 - np.pi / 4)
+                    * (np.sqrt(2 / np.pi) * deltas) ** 3
+                    / (1 - 2 / np.pi * deltas ** 2)
+                    - np.sign(alphas) / 2 * np.exp(-2 * np.pi / np.absolute(alphas))
+                )
+                mode_chain = locs + scales * m0s
+                mode16, mode, mode84 = np.percentile(mode_chain, [16, 50, 84])
+                mode_unc_min = mode - mode16
+                mode_unc_plus = mode84 - mode
+                result_list.extend(
+                    [
+                        mode,
+                        mode_unc_min,
+                        mode_unc_plus,
+                    ]
+                )
+
+            # add the results to the tables
+            table_txt.add_row((star, *result_list, chi2))
+            table_lat.add_row((star, *lat_list))
 
             # plot the feature and fitted profile
             ax.plot(waves, taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
