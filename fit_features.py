@@ -36,8 +36,8 @@ def drude_modified(x, scale=1, x_o=1, gamma_o=1, asym=1):
     return y
 
 
-def gauss_skew_func(x, amplitude=0.1, loc=9, scale=1, alpha=2):
-    return amplitude * stats.skewnorm.pdf(x, alpha, loc=loc, scale=scale)
+def gauss_skew_func(x, amplitude=0.1, loc=9, scale=1, shape=2):
+    return amplitude * stats.skewnorm.pdf(x, shape, loc=loc, scale=scale)
 
 
 def _wavegrid(waverange, resolution):
@@ -827,7 +827,7 @@ def fit_10(datapath, star, profile):
             amplitude=0.1,
             loc=9,
             scale=1,
-            alpha=2,
+            shape=2,
             bounds={
                 "loc": (6, 10),
             },
@@ -930,15 +930,18 @@ def fit_all(datapath, stars, sort_idx):
                 "scale(micron)",
                 "scale_unc_min(micron)",
                 "scale_unc_plus(micron)",
-                "alpha",
-                "alpha_unc_min",
-                "alpha_unc_plus",
+                "shape",
+                "shape_unc_min",
+                "shape_unc_plus",
                 "x_0(micron)",
                 "x_0_unc_min(micron)",
                 "x_0_unc_plus(micron)",
-                # "area(cm-1)",
-                # "area_unc_min(cm-1)",
-                # "area_unc_plus(cm-1)",
+                "tau",
+                "tau_min",
+                "tau_max",
+                "area(micron)",
+                "area_unc_min(micron)",
+                "area_unc_plus(micron)",
                 "chi2",
             )
         dtypes = np.full(len(names), "float64")
@@ -1022,28 +1025,48 @@ def fit_all(datapath, stars, sort_idx):
                 amplitudes = chains[:, 0]
                 locs = chains[:, 1]
                 scales = chains[:, 2]
-                alphas = chains[:, 3]
+                shapes = chains[:, 3]
                 # calculate the mode (i.e. peak wavelength) (in micron)
-                # delta = alpha / sqrt(1+alpha^2)
-                # m0 = sqrt(2/pi) * delta - (1 - pi/4) * ((sqrt(2/pi)*delta)^3 / (1-2/pi*delta^2)) - sign(alpha)/2 * exp(-2pi/|alpha|))
+                # delta = shape / sqrt(1+shape^2)
+                # m0 = sqrt(2/pi) * delta - (1 - pi/4) * (sqrt(2/pi)*delta)^3 / (1-2/pi*delta^2) - sgn(shape)/2 * exp(-2pi/|shape|)
                 # mode = location + scale * m0
-                deltas = alphas / (np.sqrt(1 + alphas ** 2))
+                deltas = shapes / np.sqrt(1 + shapes ** 2)
                 m0s = (
                     np.sqrt(2 / np.pi) * deltas
                     - (1 - np.pi / 4)
                     * (np.sqrt(2 / np.pi) * deltas) ** 3
                     / (1 - 2 / np.pi * deltas ** 2)
-                    - np.sign(alphas) / 2 * np.exp(-2 * np.pi / np.absolute(alphas))
+                    - np.sign(shapes) / 2 * np.exp(-2 * np.pi / np.absolute(shapes))
                 )
                 mode_chain = locs + scales * m0s
                 mode16, mode, mode84 = np.percentile(mode_chain, [16, 50, 84])
                 mode_unc_min = mode - mode16
                 mode_unc_plus = mode84 - mode
+
+                # calculate the maximum optical depth (i.e. at the peak wavelength)
+                tau_chain = fit_result(mode_chain)
+                tau16, tau, tau84 = np.percentile(tau_chain, [16, 50, 84])
+                tau_unc_min = tau - tau16
+                tau_unc_plus = tau84 - tau
+
+                # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
+                # need to check the units!!!
+                area16, area, area84 = np.percentile(1e4 / amplitudes, [16, 50, 84])
+                area_unc_min = area - area16
+                area_unc_plus = area84 - area
+
+                # add the results to the list
                 result_list.extend(
                     [
                         mode,
                         mode_unc_min,
                         mode_unc_plus,
+                        tau,
+                        tau_unc_min,
+                        tau_unc_plus,
+                        area,
+                        area_unc_min,
+                        area_unc_plus,
                     ]
                 )
 
@@ -1073,7 +1096,7 @@ def fit_all(datapath, stars, sort_idx):
 
         # write the tables to files
         table_txt.write(
-            datapath + "fit_results_" + feat_name + ".txt",
+            datapath + "fit_results_" + feat_name + "_" + profile + ".txt",
             format="ascii",
             overwrite=True,
         )
@@ -1113,7 +1136,8 @@ def main():
     ]
 
     # sort the stars by silicate feature strength by giving them an index. 0=weakest feature.
-    sort_idx = [  # "HD014434",
+    sort_idx = [
+        #    8,
         3,
         7,
         5,
