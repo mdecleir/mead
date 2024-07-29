@@ -792,11 +792,11 @@ def fit_10(datapath, star, profile):
 
     # rebin the spectrum, and select the relevant region
     waves, fluxes, uncs = rebin_constres(
-        data[(~stellar_mask) & (~bad_mask)], (7.8, 12.9), 500
+        data[(~stellar_mask) & (~bad_mask)], (7.8, 12.9), 400
     )
 
     # define masks for the continuum fitting
-    feat_reg_mask = (waves > 8.3) & (waves <= 12.3)
+    feat_reg_mask = (waves > 8.2) & (waves <= 12.4)
     # feature region per star:
     # 8.46-12.3, 8.1-12.19, 8.34-12.18, 8.47-12.1, 8.13-12.21, 8.08-12.11, 8.15-12.22, 8.20-12.33
     # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
@@ -939,6 +939,9 @@ def fit_all(datapath, stars, sort_idx):
                 "tau",
                 "tau_min",
                 "tau_max",
+                "FWHM(micron)",
+                "FWHM_unc_min(micron)",
+                "FWHM_unc_plus(micron)",
                 "area(micron)",
                 "area_unc_min(micron)",
                 "area_unc_plus(micron)",
@@ -1044,14 +1047,39 @@ def fit_all(datapath, stars, sort_idx):
                 mode_unc_plus = mode84 - mode
 
                 # calculate the maximum optical depth (i.e. at the peak wavelength)
-                tau_chain = fit_result(mode_chain)
+                tau_chain = gauss_skew_func(
+                    mode_chain, amplitudes, locs, scales, shapes
+                )
                 tau16, tau, tau84 = np.percentile(tau_chain, [16, 50, 84])
                 tau_unc_min = tau - tau16
                 tau_unc_plus = tau84 - tau
 
+                # calculate the FWHM at each chain point (this can also be done using the scipy.signal functions find_peaks and peak_widths, or using the scipy.interpolate splrep and sproot functions)
+                fwhm_chain = np.zeros(len(mode_chain))
+                xs = np.arange(waves[0], waves[-1], 0.001)
+                mid_idx = int(len(xs) / 2)
+                for j, (tau, amplitude, loc, scale, shape) in enumerate(
+                    zip(tau_chain, amplitudes, locs, scales, shapes)
+                ):
+                    ys = gauss_skew_func(xs, amplitude, loc, scale, shape)
+                    left = np.interp(tau / 2, ys[:mid_idx], xs[:mid_idx])
+                    right = np.interp(
+                        tau / 2, np.flip(ys[mid_idx:]), np.flip(xs[mid_idx:])
+                    )
+                    fwhm_chain[j] = right - left
+
+                # calculate the FWHM 50th percentile and uncertainties
+                fwhm16, fwhm, fwhm84 = np.percentile(fwhm_chain, [16, 50, 84])
+                fwhm_unc_min = fwhm - fwhm16
+                fwhm_unc_plus = fwhm84 - fwhm
+
                 # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
                 # need to check the units!!!
-                area16, area, area84 = np.percentile(1e4 / amplitudes, [16, 50, 84])
+                # fact = 1e4 / mode_chain[50] ** 2
+                # area16, area, area84 = np.percentile(
+                #     amplitudes * 1e4 / mode_chain ** 2, [16, 50, 84]
+                # )
+                area16, area, area84 = np.percentile(amplitudes, [16, 50, 84])
                 area_unc_min = area - area16
                 area_unc_plus = area84 - area
 
@@ -1064,6 +1092,9 @@ def fit_all(datapath, stars, sort_idx):
                         tau,
                         tau_unc_min,
                         tau_unc_plus,
+                        fwhm,
+                        fwhm_unc_min,
+                        fwhm_unc_plus,
                         area,
                         area_unc_min,
                         area_unc_plus,
