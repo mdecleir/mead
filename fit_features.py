@@ -904,15 +904,18 @@ def fit_all(datapath, stars, sort_idx):
         if profile == "gauss":
             names = (
                 "name",
-                "amplitude",
-                "amplitude_unc_min",
-                "amplitude_unc_plus",
-                "wavelength(micron)",
-                "wavelength_unc_min(micron)",
-                "wavelength_unc_plus(micron)",
+                "tau",
+                "tau_unc_min",
+                "tau_unc_plus",
+                "x_0(micron)",
+                "x_0_unc_min(micron)",
+                "x_0_unc_plus(micron)",
                 "std(micron)",
                 "std_unc_min(micron)",
                 "std_unc_plus(micron)",
+                "FWHM(micron)",
+                "FWHM_unc_min(micron)",
+                "FWHM_unc_plus(micron)",
                 "area(cm-1)",
                 "area_unc_min(cm-1)",
                 "area_unc_plus(cm-1)",
@@ -995,6 +998,12 @@ def fit_all(datapath, stars, sort_idx):
                 )
 
             if profile == "gauss":
+                # calculate the FWHM (in micron)
+                fwhm_chain = 2 * np.sqrt(2 * np.log(2)) * chains[:, 2]
+                fwhm16, fwhm, fwhm84 = np.percentile(fwhm_chain, [16, 50, 84])
+                fwhm_unc_min = fwhm - fwhm16
+                fwhm_unc_plus = fwhm84 - fwhm
+
                 # convert the standard deviation from units of wavelengths (micron) to wavenumbers (cm^-1)
                 # dnu = 1e4 dlambda / lambda^2
                 # lambda = mean = chains[:,1]
@@ -1010,6 +1019,9 @@ def fit_all(datapath, stars, sort_idx):
                 area_unc_plus = area84 - area
                 result_list.extend(
                     [
+                        fwhm,
+                        fwhm_unc_min,
+                        fwhm_unc_plus,
                         area,
                         area_unc_min,
                         area_unc_plus,
@@ -1182,10 +1194,10 @@ def main():
     # obtain and plot a stellar model
     stel_mod = Table.read(datapath + "MIRI/tlusty_z100t25000g400v2_miri_ifu.fits")
     stel_mod = Table.read(datapath + "MIRI/tlusty_z100t23000g400v2_nircam_ss.fits")
-    plt.plot(
-        stel_mod["WAVELENGTH"] * 1e-4,
-        stel_mod["FLUX"] * (stel_mod["WAVELENGTH"] * 1e-4) ** 4,
-    )
+    # plt.plot(
+    #     stel_mod["WAVELENGTH"] * 1e-4,
+    #     stel_mod["FLUX"] * (stel_mod["WAVELENGTH"] * 1e-4) ** 4,
+    # )
     # plt.xlim(5.6, 6.1)
     # plt.xlim(7, 14)
     # plt.ylim(3.2e6, 3.4e6)
