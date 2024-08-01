@@ -792,7 +792,7 @@ def fit_10(datapath, star, profile):
 
     # rebin the spectrum, and select the relevant region
     waves, fluxes, uncs = rebin_constres(
-        data[(~stellar_mask) & (~bad_mask)], (7.8, 12.9), 400
+        data[(~stellar_mask) & (~bad_mask)], (7.8, 13), 400
     )
 
     # define masks for the continuum fitting
@@ -828,9 +828,7 @@ def fit_10(datapath, star, profile):
             loc=9,
             scale=1,
             shape=2,
-            bounds={
-                "loc": (6, 10),
-            },
+            bounds={"loc": (8, 10), "scale": (0.5, 2), "shape": (0, 4)},
         )
     elif profile == "drude":
         feat_mod = Drude1D(
@@ -947,8 +945,8 @@ def fit_all(datapath, stars, sort_idx):
                 "x_0_unc_min(micron)",
                 "x_0_unc_plus(micron)",
                 "tau",
-                "tau_min",
-                "tau_max",
+                "tau_unc_min",
+                "tau_unc_plus",
                 "FWHM(micron)",
                 "FWHM_unc_min(micron)",
                 "FWHM_unc_plus(micron)",
@@ -970,7 +968,7 @@ def fit_all(datapath, stars, sort_idx):
         table_tex = Table(names=names_tex, dtype=np.full(len(names_tex), "str"))
 
         # create a figure to plot the feature
-        fig, ax = plt.subplots(figsize=(8, 14))
+        fig, ax = plt.subplots(figsize=(8, 2 * len(stars)))
 
         # fit the feature for all stars
         for i, star in enumerate(stars):
@@ -1076,14 +1074,15 @@ def fit_all(datapath, stars, sort_idx):
                 # calculate the FWHM at each chain point (this can also be done using the scipy.signal functions find_peaks and peak_widths, or using the scipy.interpolate splrep and sproot functions)
                 fwhm_chain = np.zeros(len(mode_chain))
                 xs = np.arange(waves[0], waves[-1], 0.001)
-                mid_idx = int(len(xs) / 2)
+
                 for j, (tau, amplitude, loc, scale, shape) in enumerate(
                     zip(tau_chain, amplitudes, locs, scales, shapes)
                 ):
                     ys = gauss_skew_func(xs, amplitude, loc, scale, shape)
-                    left = np.interp(tau / 2, ys[:mid_idx], xs[:mid_idx])
+                    peak_idx = np.argmax(ys)
+                    left = np.interp(tau / 2, ys[:peak_idx], xs[:peak_idx])
                     right = np.interp(
-                        tau / 2, np.flip(ys[mid_idx:]), np.flip(xs[mid_idx:])
+                        tau / 2, np.flip(ys[peak_idx:]), np.flip(xs[peak_idx:])
                     )
                     fwhm_chain[j] = right - left
 
@@ -1179,7 +1178,7 @@ def fit_all(datapath, stars, sort_idx):
         )
 
         table_tex.write(
-            datapath + "fit_results_" + feat_name + ".tex",
+            datapath + "fit_results_" + feat_name + "_" + profile + ".tex",
             format="aastex",
             col_align="l|CCCC",
             latexdict={
@@ -1201,7 +1200,7 @@ def main():
 
     # list the stars
     stars = [
-        # "HD014434",
+        "HD014434",
         "HD038087",
         "HD073882",
         "HD147888",
@@ -1214,15 +1213,15 @@ def main():
 
     # sort the stars by silicate feature strength by giving them an index. 0=weakest feature.
     sort_idx = [
-        #    8,
         3,
-        7,
         5,
-        0,
         4,
+        7,
+        0,
+        6,
         1,
         2,
-        6,
+        8,
     ]
 
     # obtain and plot a stellar model
