@@ -2,6 +2,7 @@
 
 # import the necessary packages
 import numpy as np
+import os
 
 from astropy.table import Table, join
 from matplotlib import pyplot as plt
@@ -29,21 +30,18 @@ def plot_feat(outpath, feat_name, data):
     """
     # create the figure
     fs = 18
-    fig, axes = plt.subplots(3, 3, figsize=(12, 12), sharex="col", sharey="row")
+    fig, axes = plt.subplots(4, 4, figsize=(16, 16), sharex="col", sharey="row")
 
     # define the parameters to be plotted
-    xpars = ["amplitude", "wavelength(micron)", "std(micron)"]
+    xpars = ["x_0(micron)", "tau", "FWHM(micron)", "shape"]
     xlabels = [
+        r"$\lambda_0$ ($\mu$m)",
         r"$\tau(\lambda_0)$",
-        r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
+        r"FWHM ($\mu$m)",
+        r"$\alpha$",
     ]
-    ypars = ["wavelength(micron)", "std(micron)", "area(cm-1)"]
-    ylabels = [
-        r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
-        r"$A$ (cm$^{-1}$)",
-    ]
+    ypars = ["tau", "FWHM(micron)", "shape", "area(micron)"]
+    ylabels = [r"$\tau(\lambda_0)$", r"FWHM ($\mu$m)", r"$\alpha$", r"$A$ (micron)"]
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # obtain the x-axis uncertainties
         if "(" in xpar:
@@ -56,7 +54,7 @@ def plot_feat(outpath, feat_name, data):
             x_unc = data[xpar + "_unc_min"], data[xpar + "_unc_plus"]
 
         # add the x-axis label
-        axes[2, i].set_xlabel(xlabel, fontsize=fs)
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
 
         for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
             # skip the duplicate plots
@@ -97,9 +95,14 @@ def plot_feat(outpath, feat_name, data):
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_params.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
     # finalize and save the figure
     plt.subplots_adjust(hspace=0, wspace=0)
-    plt.savefig(outpath + feat_name + "_params.pdf", bbox_inches="tight")
+    plt.savefig(outname, bbox_inches="tight")
 
 
 def plot_feat_AV_RV(outpath, feat_name, data):
@@ -124,18 +127,18 @@ def plot_feat_AV_RV(outpath, feat_name, data):
     # define the data to be plotted
     xpars = ["AV", "RV"]
     xlabels = ["A(V)", "R(V)"]
-    ypars = ["amplitude", "wavelength(micron)", "std(micron)", "area(cm-1)"]
+    ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
     ylabels = [
-        r"$\tau(\lambda_0)$",
         r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
-        r"$A$ (cm$^{-1}$)",
+        r"$\tau(\lambda_0)$",
+        r"FWHM ($\mu$m)",
+        r"$A$ (micron)",
     ]
 
     # create the figure
     fs = 18
     fig, axes = plt.subplots(
-        len(ypars), len(xpars), figsize=(10, 16), sharex="col", sharey="row"
+        len(ypars), len(xpars), figsize=(10, 18), sharex="col", sharey="row"
     )
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
@@ -143,7 +146,7 @@ def plot_feat_AV_RV(outpath, feat_name, data):
         x_unc = np.sqrt(data[xpar + "_runc"] ** 2 + data[xpar + "_sunc"] ** 2)
 
         # add the x-axis label
-        axes[3, i].set_xlabel(xlabel, fontsize=fs)
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
 
         for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
             # obtain the y-axis uncertainties
@@ -179,9 +182,14 @@ def plot_feat_AV_RV(outpath, feat_name, data):
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_AV_RV.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig(outpath + feat_name + "_AV_RV.pdf", bbox_inches="tight")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def plot_feat_norm_AV_RV(outpath, feat_name, data):
@@ -206,7 +214,7 @@ def plot_feat_norm_AV_RV(outpath, feat_name, data):
     # define the data to be plotted
     xpars = ["AV", "RV"]
     xlabels = ["$A(V)$", "$R(V)$"]
-    ypars = ["amplitude", "area(cm-1)"]
+    ypars = ["amplitude", "area(micron)"]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"$A/A(V)$ (cm$^{-1}$)",
@@ -324,14 +332,14 @@ def plot_feat_FM90(outpath, feat_name, data):
 
     ypars = [
         "amp/AV",
-        "wavelength(micron)",
-        "std(micron)",
+        "x_0(micron)",
+        "FWHM(micron)",
         "area/AV",
     ]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
+        r"FWHM ($\mu$m)",
         r"$A/A(V)$ (cm$^{-1}$)",
     ]
 
@@ -423,14 +431,14 @@ def plot_feat_H(outpath, feat_name, data):
 
     ypars = [
         "amp/AV",
-        "wavelength(micron)",
-        "std(micron)",
+        "x_0(micron)",
+        "FWHM(micron)",
         "area/AV",
     ]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
+        r"FWHM ($\mu$m)",
         r"$A/A(V)$ (cm$^{-1}$)",
     ]
 
@@ -512,14 +520,14 @@ def plot_feat_dcol(outpath, feat_name, data):
 
     ypars = [
         "amplitude",
-        "wavelength(micron)",
-        "std(micron)",
-        "area(cm-1)",
+        "x_0(micron)",
+        "FWHM(micron)",
+        "area(micron)",
     ]
     ylabels = [
         r"$\tau(\lambda_0)$",
         r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
+        r"FWHM ($\mu$m)",
         r"$A$ (cm$^{-1}$)",
     ]
 
@@ -600,14 +608,14 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
 
     ypars = [
         "amp/AV",
-        "wavelength(micron)",
-        "std(micron)",
+        "x_0(micron)",
+        "FWHM(micron)",
         "area/AV",
     ]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
-        r"$\sigma$ ($\mu$m)",
+        r"FWHM ($\mu$m)",
         r"$A/A(V)$ (cm$^{-1}$)",
     ]
 
@@ -699,7 +707,7 @@ def main():
 
     # obtain the fitting results of the features
     feat_58 = Table.read(datapath + "fit_results_58.txt", format="ascii")
-    feat_10 = Table.read(datapath + "fit_results_10.txt", format="ascii")
+    feat_10 = Table.read(datapath + "fit_results_10_gauss_skew.txt", format="ascii")
 
     # merge tables
     joined_ext_58 = join(ext_table, feat_58, keys_left="Name", keys_right="name")
@@ -708,7 +716,7 @@ def main():
 
     # add extra columns with normalized feature strength and area and uncertainties
     joined_fm90_10["amp/AV"] = joined_fm90_10["amplitude"] / joined_fm90_10["AV"]
-    joined_fm90_10["area/AV"] = joined_fm90_10["area(cm-1)"] / joined_fm90_10["AV"]
+    joined_fm90_10["area/AV"] = joined_fm90_10["area(micron)"] / joined_fm90_10["AV"]
     AV_unc = np.sqrt(joined_fm90_10["AV_runc"] ** 2 + joined_fm90_10["AV_sunc"] ** 2)
     joined_fm90_10["amp/AV_unc_min"] = joined_fm90_10["amp/AV"] * np.sqrt(
         (joined_fm90_10["amplitude_unc_min"] / joined_fm90_10["amplitude"]) ** 2
@@ -719,11 +727,11 @@ def main():
         + (AV_unc / joined_fm90_10["AV"]) ** 2
     )
     joined_fm90_10["area/AV_unc_min"] = joined_fm90_10["area/AV"] * np.sqrt(
-        (joined_fm90_10["area_unc_min(cm-1)"] / joined_fm90_10["area(cm-1)"]) ** 2
+        (joined_fm90_10["area_unc_min(micron)"] / joined_fm90_10["area(micron)"]) ** 2
         + (AV_unc / joined_fm90_10["AV"]) ** 2
     )
     joined_fm90_10["area/AV_unc_plus"] = joined_fm90_10["area/AV"] * np.sqrt(
-        (joined_fm90_10["area_unc_plus(cm-1)"] / joined_fm90_10["area(cm-1)"]) ** 2
+        (joined_fm90_10["area_unc_plus(micron)"] / joined_fm90_10["area(micron)"]) ** 2
         + (AV_unc / joined_fm90_10["AV"]) ** 2
     )
 
@@ -739,11 +747,12 @@ def main():
     )
 
     # define the stars that should be masked
-    bad_star = "HD014434"
-    bad_mask = feat_10["name"] == bad_star
+    bad_stars = ["HD014434", "HD038087"]
+    bad_stars = []
+    bad_mask = np.isin(feat_10["name"], bad_stars)
 
     # plot the feature properties against each other
-    plot_feat(outpath, "10", feat_10[~bad_mask])
+    plot_feat(outpath, "10", feat_10)
 
     # create plots vs. A(V) and R(V)
     # plot_feat_AV(outpath, "58", joined_ext_58)
