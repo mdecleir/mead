@@ -902,7 +902,7 @@ def fit_all(datapath, stars, sort_idx):
 
         # create a table to store the results
         if profile == "gauss":
-            names = (
+            names_txt = (
                 "name",
                 "tau",
                 "tau_unc_min",
@@ -921,8 +921,15 @@ def fit_all(datapath, stars, sort_idx):
                 "area_unc_plus(cm-1)",
                 "chi2",
             )
+            names_tex = (
+                "star",
+                r"$\lambda_0$(\micron)",
+                r"$\tau$($\lambda_0$)",
+                r"FWHM(\micron)",
+                r"$A$(cm$^{-1}$)",
+            )
         elif profile == "gauss_skew":
-            names = (
+            names_txt = (
                 "name",
                 "amplitude",
                 "amplitude_unc_min",
@@ -950,27 +957,17 @@ def fit_all(datapath, stars, sort_idx):
                 "area_unc_plus(micron)",
                 "chi2",
             )
-        dtypes = np.full(len(names), "float64")
-        dtypes[0] = "str"
-        table_txt = Table(names=names, dtype=dtypes)
-
-        table_lat = Table(
-            names=(
+            names_tex = (
                 "star",
-                r"$\tau$($\lambda_0$)",
                 r"$\lambda_0$(\micron)",
-                r"$\sigma$(\micron)",
-                #  r"$A$(cm$^{-1}$)",
-                "gamma",
-            ),
-            dtype=(
-                "str",
-                "str",
-                "str",
-                "str",
-                "str",
-            ),  # "str"),
-        )
+                r"$\tau$($\lambda_0$)",
+                r"FWHM(\micron)",
+                r"$A$(\micron)",
+            )
+        dtypes = np.full(len(names_txt), "float64")
+        dtypes[0] = "str"
+        table_txt = Table(names=names_txt, dtype=dtypes)
+        table_tex = Table(names=names_tex, dtype=np.full(len(names_tex), "str"))
 
         # create a figure to plot the feature
         fig, ax = plt.subplots(figsize=(8, 14))
@@ -984,18 +981,9 @@ def fit_all(datapath, stars, sort_idx):
 
             # obtain the results
             result_list = []
-            lat_list = []
             for param_name in fit_result.param_names:
                 param = getattr(fit_result, param_name)
                 result_list.extend([param.value, param.unc_minus, param.unc_plus])
-                lat_list.append(
-                    "{:.2f}".format(param.value)
-                    + "_{-"
-                    + "{:.2f}".format(param.unc_minus)
-                    + "}^{+"
-                    + "{:.2f}".format(param.unc_plus)
-                    + "}"
-                )
 
             if profile == "gauss":
                 # calculate the FWHM (in micron)
@@ -1027,14 +1015,33 @@ def fit_all(datapath, stars, sort_idx):
                         area_unc_plus,
                     ]
                 )
-                lat_list.append(
+
+                tex_list = [
+                    "{:.2f}".format(fit_result.mean.value)
+                    + "_{-"
+                    + "{:.2f}".format(fit_result.mean.unc_minus)
+                    + "}^{+"
+                    + "{:.2f}".format(fit_result.mean.unc_plus)
+                    + "}",
+                    "{:.3f}".format(fit_result.amplitude.value)
+                    + "_{-"
+                    + "{:.3f}".format(fit_result.amplitude.unc_minus)
+                    + "}^{+"
+                    + "{:.3f}".format(fit_result.amplitude.unc_plus)
+                    + "}",
+                    "{:.2f}".format(fwhm)
+                    + "_{-"
+                    + "{:.2f}".format(fwhm_unc_min)
+                    + "}^{+"
+                    + "{:.2f}".format(fwhm_unc_plus)
+                    + "}",
                     "{:.2f}".format(area)
                     + "_{-"
                     + "{:.2f}".format(area_unc_min)
                     + "}^{+"
                     + "{:.2f}".format(area_unc_plus)
-                    + "}"
-                )
+                    + "}",
+                ]
 
             elif profile == "gauss_skew":
                 amplitudes = chains[:, 0]
@@ -1113,9 +1120,36 @@ def fit_all(datapath, stars, sort_idx):
                     ]
                 )
 
+                tex_list = [
+                    "{:.2f}".format(mode)
+                    + "_{-"
+                    + "{:.2f}".format(mode_unc_min)
+                    + "}^{+"
+                    + "{:.2f}".format(mode_unc_plus)
+                    + "}",
+                    "{:.3f}".format(tau)
+                    + "_{-"
+                    + "{:.3f}".format(tau_unc_min)
+                    + "}^{+"
+                    + "{:.3f}".format(tau_unc_plus)
+                    + "}",
+                    "{:.2f}".format(fwhm)
+                    + "_{-"
+                    + "{:.2f}".format(fwhm_unc_min)
+                    + "}^{+"
+                    + "{:.2f}".format(fwhm_unc_plus)
+                    + "}",
+                    "{:.2f}".format(area)
+                    + "_{-"
+                    + "{:.2f}".format(area_unc_min)
+                    + "}^{+"
+                    + "{:.2f}".format(area_unc_plus)
+                    + "}",
+                ]
+
             # add the results to the tables
             table_txt.add_row((star, *result_list, chi2))
-            table_lat.add_row((star, *lat_list))
+            table_tex.add_row((star, *tex_list))
 
             # plot the feature and fitted profile
             ax.plot(waves, taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
@@ -1144,7 +1178,7 @@ def fit_all(datapath, stars, sort_idx):
             overwrite=True,
         )
 
-        table_lat.write(
+        table_tex.write(
             datapath + "fit_results_" + feat_name + ".tex",
             format="aastex",
             col_align="l|CCCC",
