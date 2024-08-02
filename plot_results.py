@@ -3,10 +3,45 @@
 # import the necessary packages
 import numpy as np
 import os
+import astropy.units as u
 
 from astropy.table import Table, join
+from dust_extinction.shapes import FM90
 from matplotlib import pyplot as plt
 from scipy.stats import spearmanr
+
+
+def calc_A1500(data):
+    """
+    Function to calculate the absolute extinction at 1500 Angstrom
+
+    Parameters
+    ----------
+    data : astropy Table
+        data including FM90 extinction parameters
+
+    Returns
+    -------
+    A1500 : numpy.ndarray
+        Absolute extinction at 1500 Angstrom for all stars
+    """
+    # obtain the extinction curve model for every star
+    ext_model = FM90(
+        C1=data["C1"],
+        C2=data["C2"],
+        C3=data["C3"],
+        C4=data["C4"],
+        xo=data["xo"],
+        gamma=data["gamma"],
+    )
+
+    # calculate E(1500-V)/E(B-V)
+    E1500 = ext_model(1500 * u.Angstrom)
+
+    # convert E(1500-V)/E(B-V) to A(1500)
+    A1500 = E1500 * data["EBV"].value + data["AV"].value
+
+    return A1500
 
 
 def plot_feat(outpath, feat_name, data):
@@ -125,8 +160,8 @@ def plot_feat_AV_RV(outpath, feat_name, data):
     Plots with feature properties vs. A(V) and R(V)
     """
     # define the data to be plotted
-    xpars = ["AV", "RV"]
-    xlabels = ["A(V)", "R(V)"]
+    xpars = ["AV", "RV", "A1500"]
+    xlabels = ["A(V)", "R(V)", r"A(1500$\AA$)"]
     ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
     ylabels = [
         r"$\lambda_0$ ($\mu$m)",
@@ -138,7 +173,11 @@ def plot_feat_AV_RV(outpath, feat_name, data):
     # create the figure
     fs = 18
     fig, axes = plt.subplots(
-        len(ypars), len(xpars), figsize=(10, 18), sharex="col", sharey="row"
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
     )
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
@@ -311,8 +350,8 @@ def plot_feat_FM90(outpath, feat_name, data):
     ]
     xlabels = [
         "UV slope = C2",
-        "UV bump amplitude \n = C3/$\gamma^2$",
-        "UV bump area \n = $\pi$C3/(2$\gamma$)",
+        r"UV bump amplitude" "\n" r"= C3/$\gamma^2$",
+        r"UV bump area" "\n" r"= $\pi$C3/(2$\gamma$)",
         "FUV rise = C4",
     ]
 
@@ -758,6 +797,11 @@ def main():
     joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
     joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
 
+    # calculate A(1500 Angstrom)
+    joined_all_10["A1500"] = calc_A1500(joined_fm90_10)
+    joined_all_10["A1500_runc"] = 0.03 * joined_all_10["A1500"]
+    joined_all_10["A1500_sunc"] = 0.03 * joined_all_10["A1500"]
+
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
     bad_stars = []
@@ -767,8 +811,7 @@ def main():
     plot_feat(outpath, "10", feat_10)
 
     # create plots vs. A(V) and R(V)
-    # plot_feat_AV(outpath, "58", joined_ext_58)
-    plot_feat_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
+    plot_feat_AV_RV(outpath, "10", joined_all_10[~bad_mask])
     plot_feat_norm_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
 
     # create plots vs. the FM90 parameters
