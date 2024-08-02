@@ -515,8 +515,15 @@ def plot_feat_dcol(outpath, feat_name, data):
     Plots with feature properties vs. dust column densities
     """
     # define the data to be plotted
-    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
-    xlabels = ["N(Mg)$_{dust}$", "N(Fe)$_{dust}$", "N(O)$_{dust}$"]
+    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d", "N(Mg)/N(Fe)", "N(Mg)/N(O)", "N(Fe)/N(O)"]
+    xlabels = [
+        "N(Mg)$_{dust}$",
+        "N(Fe)$_{dust}$",
+        "N(O)$_{dust}$",
+        "N(Mg)/N(Fe)",
+        "N(Mg)/N(O)",
+        "N(Fe)/N(O)",
+    ]
 
     ypars = [
         "amplitude",
@@ -745,6 +752,11 @@ def main():
         * np.log(10)
         * np.sqrt(joined_hyd_10["e_logNH2"] ** 2 + joined_hyd_10["e_logNH"] ** 2)
     )
+
+    # calculate ratios
+    joined_all_10["N(Mg)/N(Fe)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(Fe)_d"]
+    joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
+    joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
