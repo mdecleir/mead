@@ -44,7 +44,7 @@ def calc_A1500(data):
     return A1500
 
 
-def plot_feat(outpath, feat_name, data):
+def plot_feat(outpath, feat_name, data, bad_mask):
     """
     Function to plot the feature properties vs. each other
 
@@ -58,6 +58,9 @@ def plot_feat(outpath, feat_name, data):
 
     data : astropy Table
         Data to plot
+
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
 
     Returns
     -------
@@ -109,21 +112,39 @@ def plot_feat(outpath, feat_name, data):
 
             # plot the data
             axes[j, i].errorbar(
-                data[xpar],
-                data[ypar],
-                xerr=x_unc,
-                yerr=y_unc,
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                xerr=(x_unc[0][~bad_mask], x_unc[1][~bad_mask]),
+                yerr=(y_unc[0][~bad_mask], y_unc[1][~bad_mask]),
                 fmt="ok",
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask],
+                data[ypar][bad_mask],
+                xerr=(x_unc[0][bad_mask], x_unc[1][bad_mask]),
+                yerr=(y_unc[0][bad_mask], y_unc[1][bad_mask]),
+                fmt="ok",
+                alpha=0.25,
             )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+            axes[j, i].text(
+                0.05,
+                0.82,
                 r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
@@ -826,11 +847,10 @@ def main():
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
-    bad_stars = []
     bad_mask = np.isin(feat_10["name"], bad_stars)
 
     # plot the feature properties against each other
-    plot_feat(outpath, "10", feat_10)
+    plot_feat(outpath, "10", joined_all_10, bad_mask)
 
     # create plots vs. A(V) and R(V)
     plot_feat_AV_RV(outpath, "10", joined_all_10[~bad_mask])
