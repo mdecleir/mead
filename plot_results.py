@@ -649,8 +649,22 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
     Plots with (normalized) feature properties vs. normalized dust column densities
     """
     # define the data to be plotted
-    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
-    xlabels = ["N(Mg)$_{dust}/A(V)$", "N(Fe)$_{dust}/A(V)$", "N(O)$_{dust}/A(V)$"]
+    xpars = [
+        "N(Mg)_d",
+        "N(Fe)_d",
+        "N(O)_d",
+        "N(Mg)/N(Fe)",
+        "N(Mg)/N(O)",
+        "N(Fe)/N(O)",
+    ]
+    xlabels = [
+        "N(Mg)$_{dust}/A(V)$",
+        "N(Fe)$_{dust}/A(V)$",
+        "N(O)$_{dust}/A(V)$",
+        "N(Mg)/N(Fe)",
+        "N(Mg)/N(O)",
+        "N(Fe)/N(O)",
+    ]
 
     ypars = [
         "amp/AV",
@@ -691,12 +705,20 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
             # plot the properties
-            axes[j, i].errorbar(
-                data[xpar] / data["AV"],
-                data[ypar],
-                yerr=yunc,
-                fmt="ok",
-            )
+            if i < 3:
+                axes[j, i].errorbar(
+                    data[xpar] / data["AV"],
+                    data[ypar],
+                    yerr=yunc,
+                    fmt="ok",
+                )
+            else:
+                axes[j, i].errorbar(
+                    data[xpar],
+                    data[ypar],
+                    yerr=yunc,
+                    fmt="ok",
+                )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
