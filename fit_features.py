@@ -5,7 +5,13 @@ import numpy as np
 import os
 
 from astropy.table import Table
-from astropy.modeling.models import custom_model, Drude1D, Gaussian1D, Polynomial1D
+from astropy.modeling.models import (
+    custom_model,
+    Drude1D,
+    Gaussian1D,
+    Polynomial1D,
+    Linear1D,
+)
 from astropy.modeling.fitting import (
     FittingWithOutlierRemoval,
     LevMarLSQFitter,
@@ -151,12 +157,12 @@ def fit_cont(waves, fluxes, cont_mask):
         Plotting axes of the figure
     """
     # fit the continuum
-    pol_mod = Polynomial1D(1)
+    lin_mod = Linear1D()
     lin_fitter = LinearLSQFitter()
     out_fitter = FittingWithOutlierRemoval(lin_fitter, sigma_clip, niter=3, sigma=3)
 
     fit_result_cont, clipmask = out_fitter(
-        pol_mod,
+        lin_mod,
         waves[cont_mask],
         fluxes[cont_mask] * waves[cont_mask] ** 2,
     )
