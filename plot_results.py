@@ -66,10 +66,6 @@ def plot_feat(outpath, feat_name, data, bad_mask):
     -------
     Plots with feature properties
     """
-    # create the figure
-    fs = 18
-    fig, axes = plt.subplots(4, 4, figsize=(16, 16), sharex="col", sharey="row")
-
     # define the parameters to be plotted
     xpars = ["x_0(micron)", "tau", "FWHM(micron)", "shape"]
     xlabels = [
@@ -79,7 +75,18 @@ def plot_feat(outpath, feat_name, data, bad_mask):
         r"$\alpha$",
     ]
     ypars = ["tau", "FWHM(micron)", "shape", "area(micron)"]
-    ylabels = [r"$\tau(\lambda_0)$", r"FWHM ($\mu$m)", r"$\alpha$", r"$A$ (micron)"]
+    ylabels = [r"$\tau(\lambda_0)$", r"FWHM ($\mu$m)", r"$\alpha$", r"area ($\mu$m)"]
+
+    # create the figure
+    fs = 18
+    fig, axes = plt.subplots(
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
+    )
+
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # obtain the x-axis uncertainties
         if "(" in xpar:
@@ -161,9 +168,9 @@ def plot_feat(outpath, feat_name, data, bad_mask):
     plt.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_AV_RV(outpath, feat_name, data):
+def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     """
-    Function to plot the feature properties vs. A(V) and R(V)
+    Function to plot the feature properties vs. A(V), R(V) and A(1500A)
 
     Parameters
     ----------
@@ -176,11 +183,14 @@ def plot_feat_AV_RV(outpath, feat_name, data):
     data : astropy Table
         Data to plot
 
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
     Returns
     -------
-    Plots with feature properties vs. A(V) and R(V)
+    Plots with feature properties vs. A(V), R(V) and A(1500A)
     """
-    # define the data to be plotted
+    # define the parameters to be plotted
     xpars = ["AV", "RV", "A1500"]
     xlabels = ["A(V)", "R(V)", r"A(1500$\AA$)"]
     ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
@@ -188,7 +198,7 @@ def plot_feat_AV_RV(outpath, feat_name, data):
         r"$\lambda_0$ ($\mu$m)",
         r"$\tau(\lambda_0)$",
         r"FWHM ($\mu$m)",
-        r"$A$ (micron)",
+        r"area ($\mu$m)",
     ]
 
     # create the figure
@@ -202,9 +212,6 @@ def plot_feat_AV_RV(outpath, feat_name, data):
     )
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
-        # calculate the uncertainty on the x-axis value
-        x_unc = np.sqrt(data[xpar + "_runc"] ** 2 + data[xpar + "_sunc"] ** 2)
-
         # add the x-axis label
         axes[-1, i].set_xlabel(xlabel, fontsize=fs)
 
@@ -219,23 +226,41 @@ def plot_feat_AV_RV(outpath, feat_name, data):
             else:
                 y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
-            # plot the properties
+            # plot the data
             axes[j, i].errorbar(
-                data[xpar],
-                data[ypar],
-                xerr=x_unc,
-                yerr=y_unc,
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                xerr=data[xpar + "_unc"][~bad_mask],
+                yerr=(y_unc[0][~bad_mask], y_unc[1][~bad_mask]),
                 fmt="ok",
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask],
+                data[ypar][bad_mask],
+                xerr=data[xpar + "_unc"][bad_mask],
+                yerr=(y_unc[0][bad_mask], y_unc[1][bad_mask]),
+                fmt="ok",
+                alpha=0.25,
             )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+            axes[j, i].text(
+                0.05,
+                0.82,
                 r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
@@ -243,7 +268,7 @@ def plot_feat_AV_RV(outpath, feat_name, data):
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
     # rename the previous version of the plot
-    outname = outpath + feat_name + "_AV_RV.pdf"
+    outname = outpath + feat_name + "_AV_RV_A1500.pdf"
     if os.path.isfile(outname):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
 
@@ -840,10 +865,17 @@ def main():
     joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
     joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
 
+    # calculate the uncertainties on A(V) and R(V)
+    joined_all_10["AV_unc"] = np.sqrt(
+        joined_all_10["AV_runc"] ** 2 + joined_all_10["AV_sunc"] ** 2
+    )
+    joined_all_10["RV_unc"] = np.sqrt(
+        joined_all_10["RV_runc"] ** 2 + joined_all_10["RV_sunc"] ** 2
+    )
+
     # calculate A(1500 Angstrom)
     joined_all_10["A1500"] = calc_A1500(joined_fm90_10)
-    joined_all_10["A1500_runc"] = 0.03 * joined_all_10["A1500"]
-    joined_all_10["A1500_sunc"] = 0.03 * joined_all_10["A1500"]
+    joined_all_10["A1500_unc"] = 0.03 * joined_all_10["A1500"]
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
@@ -853,18 +885,18 @@ def main():
     plot_feat(outpath, "10", joined_all_10, bad_mask)
 
     # create plots vs. A(V) and R(V)
-    plot_feat_AV_RV(outpath, "10", joined_all_10[~bad_mask])
-    plot_feat_norm_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
-
-    # create plots vs. the FM90 parameters
-    plot_feat_FM90(outpath, "10", joined_fm90_10[~bad_mask])
-
-    # create plots vs. hydrogen measurements
-    plot_feat_H(outpath, "10", joined_hyd_10[~bad_mask])
-
-    # create plots vs. dust column densities
-    plot_feat_dcol(outpath, "10", joined_all_10[~bad_mask])
-    plot_feat_norm_dcol(outpath, "10", joined_all_10[~bad_mask])
+    plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
+    # plot_feat_norm_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
+    #
+    # # create plots vs. the FM90 parameters
+    # plot_feat_FM90(outpath, "10", joined_fm90_10[~bad_mask])
+    #
+    # # create plots vs. hydrogen measurements
+    # plot_feat_H(outpath, "10", joined_hyd_10[~bad_mask])
+    #
+    # # create plots vs. dust column densities
+    # plot_feat_dcol(outpath, "10", joined_all_10[~bad_mask])
+    # plot_feat_norm_dcol(outpath, "10", joined_all_10[~bad_mask])
 
 
 if __name__ == "__main__":
