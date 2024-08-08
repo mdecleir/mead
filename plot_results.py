@@ -41,7 +41,7 @@ def calc_A1500(data):
     # convert E(1500-V)/E(B-V) to A(1500)
     A1500 = E1500 * data["EBV"].value + data["AV"].value
 
-    return A1500
+    return A1500, 0.03 * A1500
 
 
 def plot_feat(outpath, feat_name, data, bad_mask):
@@ -170,7 +170,7 @@ def plot_feat(outpath, feat_name, data, bad_mask):
 
 def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     """
-    Function to plot the feature properties vs. A(V), R(V) and A(1500A)
+    Function to plot the feature properties vs. A(V), A(1500A) and R(V)
 
     Parameters
     ----------
@@ -188,11 +188,11 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
 
     Returns
     -------
-    Plots with feature properties vs. A(V), R(V) and A(1500A)
+    Plots with feature properties vs. A(V), A(1500A) and R(V)
     """
     # define the parameters to be plotted
-    xpars = ["AV", "RV", "A1500"]
-    xlabels = ["A(V)", "R(V)", r"A(1500$\AA$)"]
+    xpars = ["AV", "A1500", "RV"]
+    xlabels = ["A(V)", r"A(1500$\AA$)", "R(V)"]
     ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
     ylabels = [
         r"$\lambda_0$ ($\mu$m)",
@@ -268,7 +268,7 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
     # rename the previous version of the plot
-    outname = outpath + feat_name + "_AV_RV_A1500.pdf"
+    outname = outpath + feat_name + "_AV_A1500_RV.pdf"
     if os.path.isfile(outname):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
 
@@ -874,8 +874,7 @@ def main():
     )
 
     # calculate A(1500 Angstrom)
-    joined_all_10["A1500"] = calc_A1500(joined_fm90_10)
-    joined_all_10["A1500_unc"] = 0.03 * joined_all_10["A1500"]
+    joined_all_10["A1500"], joined_all_10["A1500_unc"] = calc_A1500(joined_fm90_10)
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
