@@ -666,7 +666,6 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask):
     -------
     Plots with feature properties vs. dust column densities and ratios
     """
-
     # define the parameters to be plotted
     xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d", "N(Mg)/N(Fe)", "N(Mg)/N(O)", "N(Fe)/N(O)"]
     xlabels = [
@@ -758,6 +757,7 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask):
             # add the y-axis label (once)
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+
     # rename the previous version of the plot
     outname = outpath + feat_name + "_dcol.pdf"
     if os.path.isfile(outname):
@@ -768,9 +768,9 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_norm_dcol(outpath, feat_name, data):
+def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
     """
-    Function to plot the (normalized) feature properties vs. the normalized dust column densities
+    Function to plot the (normalized) feature properties vs. the normalized dust column densities and ratios
 
     Parameters
     ----------
@@ -783,15 +783,18 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
     data : astropy Table
         Data to plot
 
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
     Returns
     -------
-    Plots with (normalized) feature properties vs. normalized dust column densities
+    Plots with (normalized) feature properties vs. normalized dust column densities and ratios
     """
-    # define the data to be plotted
+    # define the parameters to be plotted
     xpars = [
-        "N(Mg)_d",
-        "N(Fe)_d",
-        "N(O)_d",
+        "N(Mg)/AV",
+        "N(Fe)/AV",
+        "N(O)/AV",
         "N(Mg)/N(Fe)",
         "N(Mg)/N(O)",
         "N(Fe)/N(O)",
@@ -806,7 +809,7 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
     ]
 
     ypars = [
-        "amp/AV",
+        "tau/AV",
         "x_0(micron)",
         "FWHM(micron)",
         "area/AV",
@@ -815,7 +818,7 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
         r"FWHM ($\mu$m)",
-        r"$A/A(V)$ (cm$^{-1}$)",
+        r"area/$A(V)$ ($\mu$m)",
     ]
 
     # create the figure
@@ -827,6 +830,9 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
         sharex="col",
         sharey="row",
     )
+
+    # entirely remove bad star
+    del_mask = data["name"] == "HD014434"
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # add the x-axis label
@@ -843,39 +849,55 @@ def plot_feat_norm_dcol(outpath, feat_name, data):
             else:
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
-            # plot the properties
-            if i < 3:
-                axes[j, i].errorbar(
-                    data[xpar] / data["AV"],
-                    data[ypar],
-                    yerr=yunc,
-                    fmt="ok",
-                )
-            else:
-                axes[j, i].errorbar(
-                    data[xpar],
-                    data[ypar],
-                    yerr=yunc,
-                    fmt="ok",
-                )
+            # plot the data
+            axes[j, i].errorbar(
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
+                fmt="ok",
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask & ~del_mask],
+                data[ypar][bad_mask & ~del_mask],
+                yerr=(yunc[0][bad_mask & ~del_mask], yunc[1][bad_mask & ~del_mask]),
+                fmt="ok",
+                alpha=0.25,
+            )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
-                r"$\rho = %.2f$" % spearmanr(data[xpar] / data["AV"], data[ypar])[0],
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+            )
+
+            axes[j, i].text(
+                0.05,
+                0.82,
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~del_mask], data[ypar][~del_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_norm_dcol.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig(outpath + feat_name + "_norm_dcol.pdf", bbox_inches="tight")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def main():
@@ -961,10 +983,13 @@ def main():
         * np.sqrt(joined_all_10["e_logNH2"] ** 2 + joined_all_10["e_logNH"] ** 2)
     )
 
-    # calculate ratios
+    # calculate dust column density ratios and normalized dust column densities
     joined_all_10["N(Mg)/N(Fe)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(Fe)_d"]
     joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
     joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
+    joined_all_10["N(Mg)/AV"] = joined_all_10["N(Mg)_d"] / joined_all_10["AV"]
+    joined_all_10["N(Fe)/AV"] = joined_all_10["N(Fe)_d"] / joined_all_10["AV"]
+    joined_all_10["N(O)/AV"] = joined_all_10["N(O)_d"] / joined_all_10["AV"]
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
@@ -985,7 +1010,7 @@ def main():
 
     # create plots vs. dust column densities
     plot_feat_dcol(outpath, "10", joined_all_10, bad_mask)
-    # plot_feat_norm_dcol(outpath, "10", joined_all_10[~bad_mask])
+    plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
 
 
 if __name__ == "__main__":
