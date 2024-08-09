@@ -519,7 +519,7 @@ def plot_feat_FM90(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_H(outpath, feat_name, data):
+def plot_feat_H(outpath, feat_name, data, bad_mask):
     """
     Function to plot the feature properties vs. the hydrogen measurements
 
@@ -534,11 +534,14 @@ def plot_feat_H(outpath, feat_name, data):
     data : astropy Table
         Data to plot
 
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
     Returns
     -------
     Plots with feature properties vs. hydrogen measurements
     """
-    # define the data to be plotted
+    # define the parameters to be plotted
     xpars = [
         "logNH",
         "logNHI",
@@ -551,9 +554,8 @@ def plot_feat_H(outpath, feat_name, data):
         "log(N(H$_2$))",
         "f(H$_2$) = 2N(H$_2$)/N(H)",
     ]
-
     ypars = [
-        "amp/AV",
+        "tau/AV",
         "x_0(micron)",
         "FWHM(micron)",
         "area/AV",
@@ -562,7 +564,7 @@ def plot_feat_H(outpath, feat_name, data):
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
         r"FWHM ($\mu$m)",
-        r"$A/A(V)$ (cm$^{-1}$)",
+        r"area/$A(V)$ ($\mu$m)",
     ]
 
     # create the figure
@@ -590,32 +592,56 @@ def plot_feat_H(outpath, feat_name, data):
             else:
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
-            # plot the properties
+            # plot the data
             axes[j, i].errorbar(
-                data[xpar],
-                data[ypar],
-                xerr=data["e_" + xpar],
-                yerr=yunc,
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                xerr=data["e_" + xpar][~bad_mask],
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask],
+                data[ypar][bad_mask],
+                xerr=data["e_" + xpar][bad_mask],
+                yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
+                fmt="ok",
+                alpha=0.25,
             )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            axes[j, i].text(
+                0.05,
+                0.82,
                 r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_H.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig(outpath + feat_name + "_H.pdf", bbox_inches="tight")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def plot_feat_dcol(outpath, feat_name, data):
@@ -900,10 +926,10 @@ def main():
     )
 
     # calculate the uncertainty on f(H2)
-    joined_hyd_10["e_fH2"] = (
-        joined_hyd_10["fH2"]
+    joined_all_10["e_fH2"] = (
+        joined_all_10["fH2"]
         * np.log(10)
-        * np.sqrt(joined_hyd_10["e_logNH2"] ** 2 + joined_hyd_10["e_logNH"] ** 2)
+        * np.sqrt(joined_all_10["e_logNH2"] ** 2 + joined_all_10["e_logNH"] ** 2)
     )
 
     # calculate ratios
@@ -925,9 +951,9 @@ def main():
     # create plots vs. the FM90 parameters
     plot_feat_FM90(outpath, "10", joined_all_10, bad_mask)
 
-    # # create plots vs. hydrogen measurements
-    # plot_feat_H(outpath, "10", joined_hyd_10[~bad_mask])
-    #
+    # create plots vs. hydrogen measurements
+    plot_feat_H(outpath, "10", joined_all_10, bad_mask)
+
     # # create plots vs. dust column densities
     # plot_feat_dcol(outpath, "10", joined_all_10[~bad_mask])
     # plot_feat_norm_dcol(outpath, "10", joined_all_10[~bad_mask])
