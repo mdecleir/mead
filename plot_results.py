@@ -644,9 +644,9 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_dcol(outpath, feat_name, data):
+def plot_feat_dcol(outpath, feat_name, data, bad_mask):
     """
-    Function to plot the feature properties vs. the dust column densities
+    Function to plot the feature properties vs. the dust column densities and ratios
 
     Parameters
     ----------
@@ -659,11 +659,15 @@ def plot_feat_dcol(outpath, feat_name, data):
     data : astropy Table
         Data to plot
 
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
     Returns
     -------
-    Plots with feature properties vs. dust column densities
+    Plots with feature properties vs. dust column densities and ratios
     """
-    # define the data to be plotted
+
+    # define the parameters to be plotted
     xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d", "N(Mg)/N(Fe)", "N(Mg)/N(O)", "N(Fe)/N(O)"]
     xlabels = [
         "N(Mg)$_{dust}$",
@@ -675,7 +679,7 @@ def plot_feat_dcol(outpath, feat_name, data):
     ]
 
     ypars = [
-        "amplitude",
+        "tau",
         "x_0(micron)",
         "FWHM(micron)",
         "area(micron)",
@@ -684,7 +688,7 @@ def plot_feat_dcol(outpath, feat_name, data):
         r"$\tau(\lambda_0)$",
         r"$\lambda_0$ ($\mu$m)",
         r"FWHM ($\mu$m)",
-        r"$A$ (cm$^{-1}$)",
+        r"area ($\mu$m)",
     ]
 
     # create the figure
@@ -696,6 +700,9 @@ def plot_feat_dcol(outpath, feat_name, data):
         sharex="col",
         sharey="row",
     )
+
+    # entirely remove bad star
+    del_mask = data["name"] == "HD014434"
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # add the x-axis label
@@ -712,31 +719,53 @@ def plot_feat_dcol(outpath, feat_name, data):
             else:
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
-            # plot the properties
+            # plot the data
             axes[j, i].errorbar(
-                data[xpar],
-                data[ypar],
-                yerr=yunc,
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask & ~del_mask],
+                data[ypar][bad_mask & ~del_mask],
+                yerr=(yunc[0][bad_mask & ~del_mask], yunc[1][bad_mask & ~del_mask]),
+                fmt="ok",
+                alpha=0.25,
             )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
-                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+            )
+            axes[j, i].text(
+                0.05,
+                0.82,
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~del_mask], data[ypar][~del_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_dcol.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
 
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig(outpath + feat_name + "_dcol.pdf", bbox_inches="tight")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def plot_feat_norm_dcol(outpath, feat_name, data):
@@ -954,8 +983,8 @@ def main():
     # create plots vs. hydrogen measurements
     plot_feat_H(outpath, "10", joined_all_10, bad_mask)
 
-    # # create plots vs. dust column densities
-    # plot_feat_dcol(outpath, "10", joined_all_10[~bad_mask])
+    # create plots vs. dust column densities
+    plot_feat_dcol(outpath, "10", joined_all_10, bad_mask)
     # plot_feat_norm_dcol(outpath, "10", joined_all_10[~bad_mask])
 
 
