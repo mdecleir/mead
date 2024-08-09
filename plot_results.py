@@ -91,12 +91,12 @@ def plot_feat(outpath, feat_name, data, bad_mask):
         # obtain the x-axis uncertainties
         if "(" in xpar:
             index = xpar.find("(")
-            x_unc = (
+            xunc = (
                 data[xpar[:index] + "_unc_min" + xpar[index:]],
                 data[xpar[:index] + "_unc_plus" + xpar[index:]],
             )
         else:
-            x_unc = data[xpar + "_unc_min"], data[xpar + "_unc_plus"]
+            xunc = data[xpar + "_unc_min"], data[xpar + "_unc_plus"]
 
         # add the x-axis label
         axes[-1, i].set_xlabel(xlabel, fontsize=fs)
@@ -110,26 +110,26 @@ def plot_feat(outpath, feat_name, data, bad_mask):
             # obtain the y-axis uncertainties
             if "(" in ypar:
                 index = ypar.find("(")
-                y_unc = (
+                yunc = (
                     data[ypar[:index] + "_unc_min" + ypar[index:]],
                     data[ypar[:index] + "_unc_plus" + ypar[index:]],
                 )
             else:
-                y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+                yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
             # plot the data
             axes[j, i].errorbar(
                 data[xpar][~bad_mask],
                 data[ypar][~bad_mask],
-                xerr=(x_unc[0][~bad_mask], x_unc[1][~bad_mask]),
-                yerr=(y_unc[0][~bad_mask], y_unc[1][~bad_mask]),
+                xerr=(xunc[0][~bad_mask], xunc[1][~bad_mask]),
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask],
                 data[ypar][bad_mask],
-                xerr=(x_unc[0][bad_mask], x_unc[1][bad_mask]),
-                yerr=(y_unc[0][bad_mask], y_unc[1][bad_mask]),
+                xerr=(xunc[0][bad_mask], xunc[1][bad_mask]),
+                yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
                 fmt="ok",
                 alpha=0.25,
             )
@@ -219,26 +219,26 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
             # obtain the y-axis uncertainties
             if "(" in ypar:
                 index = ypar.find("(")
-                y_unc = (
+                yunc = (
                     data[ypar[:index] + "_unc_min" + ypar[index:]],
                     data[ypar[:index] + "_unc_plus" + ypar[index:]],
                 )
             else:
-                y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+                yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
             # plot the data
             axes[j, i].errorbar(
                 data[xpar][~bad_mask],
                 data[ypar][~bad_mask],
                 xerr=data[xpar + "_unc"][~bad_mask],
-                yerr=(y_unc[0][~bad_mask], y_unc[1][~bad_mask]),
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask],
                 data[ypar][bad_mask],
                 xerr=data[xpar + "_unc"][bad_mask],
-                yerr=(y_unc[0][bad_mask], y_unc[1][bad_mask]),
+                yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
                 fmt="ok",
                 alpha=0.25,
             )
@@ -380,7 +380,7 @@ def plot_feat_norm_AV_RV(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_FM90(outpath, feat_name, data):
+def plot_feat_FM90(outpath, feat_name, data, bad_mask):
     """
     Function to plot the (normalized) feature properties vs. the FM90 parameters (UV extinction)
 
@@ -394,6 +394,9 @@ def plot_feat_FM90(outpath, feat_name, data):
 
     data : astropy Table
         Data to plot
+
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
 
     Returns
     -------
@@ -428,7 +431,7 @@ def plot_feat_FM90(outpath, feat_name, data):
     ]
 
     ypars = [
-        "amp/AV",
+        "tau/AV",
         "x_0(micron)",
         "FWHM(micron)",
         "area/AV",
@@ -437,7 +440,7 @@ def plot_feat_FM90(outpath, feat_name, data):
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
         r"FWHM ($\mu$m)",
-        r"$A/A(V)$ (cm$^{-1}$)",
+        r"area/$A(V)$ ($\mu$m)",
     ]
 
     # create the figure
@@ -465,32 +468,55 @@ def plot_feat_FM90(outpath, feat_name, data):
             else:
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
-            # plot the properties
+            # plot the data
             axes[j, i].errorbar(
-                xpar,
-                data[ypar],
-                xerr=xunc,
-                yerr=yunc,
+                xpar[~bad_mask],
+                data[ypar][~bad_mask],
+                xerr=xunc[~bad_mask],
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+            )
+            axes[j, i].errorbar(
+                xpar[bad_mask],
+                data[ypar][bad_mask],
+                xerr=xunc[bad_mask],
+                yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
+                fmt="ok",
+                alpha=0.25,
             )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
+                r"$\rho = %.2f$" % spearmanr(xpar[~bad_mask], data[ypar][~bad_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+
+            axes[j, i].text(
+                0.05,
+                0.82,
                 r"$\rho = %.2f$" % spearmanr(xpar, data[ypar])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_FM90.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig(outpath + feat_name + "_FM90.pdf", bbox_inches="tight")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def plot_feat_H(outpath, feat_name, data):
@@ -850,6 +876,9 @@ def main():
         joined_all_10["RV_runc"] ** 2 + joined_all_10["RV_sunc"] ** 2
     )
 
+    # calculate A(1500 Angstrom)
+    joined_all_10["A1500"], joined_all_10["A1500_unc"] = calc_A1500(joined_all_10)
+
     # calculate normalized optical depth and area, and uncertainties
     joined_all_10["tau/AV"] = joined_all_10["tau"] / joined_all_10["AV"]
     joined_all_10["area/AV"] = joined_all_10["area(micron)"] / joined_all_10["AV"]
@@ -882,9 +911,6 @@ def main():
     joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
     joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
 
-    # calculate A(1500 Angstrom)
-    joined_all_10["A1500"], joined_all_10["A1500_unc"] = calc_A1500(joined_fm90_10)
-
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
     bad_mask = np.isin(feat_10["name"], bad_stars)
@@ -896,9 +922,9 @@ def main():
     plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
     plot_feat_norm_AV_RV(outpath, "10", joined_all_10, bad_mask)
 
-    # # create plots vs. the FM90 parameters
-    # plot_feat_FM90(outpath, "10", joined_fm90_10[~bad_mask])
-    #
+    # create plots vs. the FM90 parameters
+    plot_feat_FM90(outpath, "10", joined_all_10, bad_mask)
+
     # # create plots vs. hydrogen measurements
     # plot_feat_H(outpath, "10", joined_hyd_10[~bad_mask])
     #
