@@ -192,7 +192,7 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     """
     # define the parameters to be plotted
     xpars = ["AV", "A1500", "RV"]
-    xlabels = ["A(V)", r"A(1500$\AA$)", "R(V)"]
+    xlabels = ["$A(V)$", r"$A(1500\AA)$", "$R(V)$"]
     ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
     ylabels = [
         r"$\lambda_0$ ($\mu$m)",
@@ -277,9 +277,9 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_norm_AV_RV(outpath, feat_name, data):
+def plot_feat_norm_AV_RV(outpath, feat_name, data, bad_mask):
     """
-    Function to plot the normalized feature properties vs. A(V) and R(V)
+    Function to plot the normalized feature properties vs. A(V), A(1500A) and R(V)
 
     Parameters
     ----------
@@ -292,80 +292,92 @@ def plot_feat_norm_AV_RV(outpath, feat_name, data):
     data : astropy Table
         Data to plot
 
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
     Returns
     -------
-    Plots with normalized feature properties vs. A(V) and R(V)
+    Plots with normalized feature properties vs. A(V), A(1500) and R(V)
     """
-    # define the data to be plotted
-    xpars = ["AV", "RV"]
-    xlabels = ["$A(V)$", "$R(V)$"]
-    ypars = ["amplitude", "area(micron)"]
+    # define the parameters to be plotted
+    xpars = ["AV", "A1500", "RV"]
+    xlabels = ["$A(V)$", r"$A(1500\AA)$", "$R(V)$"]
+    ypars = ["tau/AV", "area/AV"]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
-        r"$A/A(V)$ (cm$^{-1}$)",
+        r"area/$A(V)$ ($\mu$m)",
     ]
 
     # create the figure
     fs = 18
     fig, axes = plt.subplots(
-        len(ypars), len(xpars), figsize=(10, 10), sharex="col", sharey="row"
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
     )
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
-        # calculate the uncertainty on the x-axis value
-        x_unc = np.sqrt(data[xpar + "_runc"] ** 2 + data[xpar + "_sunc"] ** 2)
-
         # add the x-axis label
         axes[-1, i].set_xlabel(xlabel, fontsize=fs)
 
         for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
-            # obtain the y-axis uncertainties
-            if "(" in ypar:
-                index = ypar.find("(")
-                y_unc = (
-                    data[ypar[:index] + "_unc_min" + ypar[index:]],
-                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
-                )
-            else:
-                y_unc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
-            AV_unc = np.sqrt(data["AV_runc"] ** 2 + data["AV_sunc"] ** 2)
-            y_min = (
-                data[ypar]
-                / data["AV"]
-                * np.sqrt((y_unc[0] / data[ypar]) ** 2 + (AV_unc / data["AV"]) ** 2)
-            )
-            y_max = (
-                data[ypar]
-                / data["AV"]
-                * np.sqrt((y_unc[1] / data[ypar]) ** 2 + (AV_unc / data["AV"]) ** 2)
-            )
-
-            # plot the normalized properties
+            # plot the data
             axes[j, i].errorbar(
-                data[xpar],
-                data[ypar] / data["AV"],
-                xerr=x_unc,
-                yerr=(y_min, y_max),
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                xerr=data[xpar + "_unc"][~bad_mask],
+                yerr=(
+                    data[ypar + "_unc_min"][~bad_mask],
+                    data[ypar + "_unc_plus"][~bad_mask],
+                ),
                 fmt="ok",
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask],
+                data[ypar][bad_mask],
+                xerr=data[xpar + "_unc"][bad_mask],
+                yerr=(
+                    data[ypar + "_unc_min"][bad_mask],
+                    data[ypar + "_unc_plus"][bad_mask],
+                ),
+                fmt="ok",
+                alpha=0.25,
             )
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
                 0.05,
                 0.9,
-                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar] / data["AV"])[0],
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
                 transform=axes[j, i].transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
+            )
+            axes[j, i].text(
+                0.05,
+                0.82,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+                alpha=0.25,
             )
 
             # add the y-axis label (once)
             if i == 0:
                 axes[j, 0].set_ylabel(ylabel, fontsize=fs)
 
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_norm_AV_A1500_RV.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.savefig(outpath + feat_name + "_norm_AV_RV.pdf", bbox_inches="tight")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def plot_feat_FM90(outpath, feat_name, data):
@@ -827,31 +839,36 @@ def main():
     joined_ext_58 = join(ext_table, feat_58, keys_left="Name", keys_right="name")
     joined_ext_10 = join(ext_table, feat_10, keys_left="Name", keys_right="name")
     joined_fm90_10 = join(joined_ext_10, fm90_table, keys="Name")
-
-    # add extra columns with normalized feature strength and area and uncertainties
-    joined_fm90_10["amp/AV"] = joined_fm90_10["amplitude"] / joined_fm90_10["AV"]
-    joined_fm90_10["area/AV"] = joined_fm90_10["area(micron)"] / joined_fm90_10["AV"]
-    AV_unc = np.sqrt(joined_fm90_10["AV_runc"] ** 2 + joined_fm90_10["AV_sunc"] ** 2)
-    joined_fm90_10["amp/AV_unc_min"] = joined_fm90_10["amp/AV"] * np.sqrt(
-        (joined_fm90_10["amplitude_unc_min"] / joined_fm90_10["amplitude"]) ** 2
-        + (AV_unc / joined_fm90_10["AV"]) ** 2
-    )
-    joined_fm90_10["amp/AV_unc_plus"] = joined_fm90_10["amp/AV"] * np.sqrt(
-        (joined_fm90_10["amplitude_unc_plus"] / joined_fm90_10["amplitude"]) ** 2
-        + (AV_unc / joined_fm90_10["AV"]) ** 2
-    )
-    joined_fm90_10["area/AV_unc_min"] = joined_fm90_10["area/AV"] * np.sqrt(
-        (joined_fm90_10["area_unc_min(micron)"] / joined_fm90_10["area(micron)"]) ** 2
-        + (AV_unc / joined_fm90_10["AV"]) ** 2
-    )
-    joined_fm90_10["area/AV_unc_plus"] = joined_fm90_10["area/AV"] * np.sqrt(
-        (joined_fm90_10["area_unc_plus(micron)"] / joined_fm90_10["area(micron)"]) ** 2
-        + (AV_unc / joined_fm90_10["AV"]) ** 2
-    )
-
-    # merge more tables
     joined_hyd_10 = join(joined_fm90_10, hyd_table, keys_left="Name", keys_right="Star")
     joined_all_10 = join(joined_hyd_10, dep_table, keys_left="Name", keys_right="star")
+
+    # calculate the uncertainties on A(V) and R(V)
+    joined_all_10["AV_unc"] = np.sqrt(
+        joined_all_10["AV_runc"] ** 2 + joined_all_10["AV_sunc"] ** 2
+    )
+    joined_all_10["RV_unc"] = np.sqrt(
+        joined_all_10["RV_runc"] ** 2 + joined_all_10["RV_sunc"] ** 2
+    )
+
+    # calculate normalized optical depth and area, and uncertainties
+    joined_all_10["tau/AV"] = joined_all_10["tau"] / joined_all_10["AV"]
+    joined_all_10["area/AV"] = joined_all_10["area(micron)"] / joined_all_10["AV"]
+    joined_all_10["tau/AV_unc_min"] = joined_all_10["tau/AV"] * np.sqrt(
+        (joined_all_10["tau_unc_min"] / joined_all_10["tau"]) ** 2
+        + (joined_all_10["AV_unc"] / joined_all_10["AV"]) ** 2
+    )
+    joined_all_10["tau/AV_unc_plus"] = joined_all_10["tau/AV"] * np.sqrt(
+        (joined_all_10["tau_unc_plus"] / joined_all_10["tau"]) ** 2
+        + (joined_all_10["AV_unc"] / joined_all_10["AV"]) ** 2
+    )
+    joined_all_10["area/AV_unc_min"] = joined_all_10["area/AV"] * np.sqrt(
+        (joined_all_10["area_unc_min(micron)"] / joined_all_10["area(micron)"]) ** 2
+        + (joined_all_10["AV_unc"] / joined_all_10["AV"]) ** 2
+    )
+    joined_all_10["area/AV_unc_plus"] = joined_all_10["area/AV"] * np.sqrt(
+        (joined_all_10["area_unc_plus(micron)"] / joined_all_10["area(micron)"]) ** 2
+        + (joined_all_10["AV_unc"] / joined_all_10["AV"]) ** 2
+    )
 
     # calculate the uncertainty on f(H2)
     joined_hyd_10["e_fH2"] = (
@@ -865,14 +882,6 @@ def main():
     joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
     joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
 
-    # calculate the uncertainties on A(V) and R(V)
-    joined_all_10["AV_unc"] = np.sqrt(
-        joined_all_10["AV_runc"] ** 2 + joined_all_10["AV_sunc"] ** 2
-    )
-    joined_all_10["RV_unc"] = np.sqrt(
-        joined_all_10["RV_runc"] ** 2 + joined_all_10["RV_sunc"] ** 2
-    )
-
     # calculate A(1500 Angstrom)
     joined_all_10["A1500"], joined_all_10["A1500_unc"] = calc_A1500(joined_fm90_10)
 
@@ -883,10 +892,10 @@ def main():
     # plot the feature properties against each other
     plot_feat(outpath, "10", joined_all_10, bad_mask)
 
-    # create plots vs. A(V) and R(V)
+    # create plots vs. A(V), A(1500A) and R(V)
     plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
-    # plot_feat_norm_AV_RV(outpath, "10", joined_ext_10[~bad_mask])
-    #
+    plot_feat_norm_AV_RV(outpath, "10", joined_all_10, bad_mask)
+
     # # create plots vs. the FM90 parameters
     # plot_feat_FM90(outpath, "10", joined_fm90_10[~bad_mask])
     #
