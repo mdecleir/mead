@@ -966,7 +966,8 @@ def fit_all(datapath, stars, sort_idx):
                 r"$\lambda_0$(\micron)",
                 r"$\tau$($\lambda_0$)",
                 r"FWHM(\micron)",
-                r"$A$(\micron)",
+                r"area(\micron) (=$B$)",
+                r"$\alpha$",
             )
         dtypes = np.full(len(names_txt), "float64")
         dtypes[0] = "str"
@@ -1098,14 +1099,14 @@ def fit_all(datapath, stars, sort_idx):
                 fwhm_unc_plus = fwhm84 - fwhm
 
                 # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
-                # need to check the units!!!
-                # fact = 1e4 / mode_chain[50] ** 2
-                # area16, area, area84 = np.percentile(
-                #     amplitudes * 1e4 / mode_chain ** 2, [16, 50, 84]
-                # )
                 area16, area, area84 = np.percentile(amplitudes, [16, 50, 84])
                 area_unc_min = area - area16
                 area_unc_plus = area84 - area
+
+                # calculate the shape 50th percentile and uncertainties
+                shape16, shape, shape84 = np.percentile(shapes, [16, 50, 84])
+                shape_unc_min = shape - shape16
+                shape_unc_plus = shape84 - shape
 
                 # add the results to the list
                 result_list.extend(
@@ -1144,11 +1145,17 @@ def fit_all(datapath, stars, sort_idx):
                     + "}^{+"
                     + "{:.2f}".format(fwhm_unc_plus)
                     + "}",
-                    "{:.2f}".format(area)
+                    "{:.3f}".format(area)
                     + "_{-"
-                    + "{:.2f}".format(area_unc_min)
+                    + "{:.3f}".format(area_unc_min)
                     + "}^{+"
-                    + "{:.2f}".format(area_unc_plus)
+                    + "{:.3f}".format(area_unc_plus)
+                    + "}",
+                    "{:.2f}".format(shape)
+                    + "_{-"
+                    + "{:.2f}".format(shape_unc_min)
+                    + "}^{+"
+                    + "{:.2f}".format(shape_unc_plus)
                     + "}",
                 ]
 
@@ -1186,10 +1193,10 @@ def fit_all(datapath, stars, sort_idx):
         table_tex.write(
             datapath + "fit_results_" + feat_name + "_" + profile + ".tex",
             format="aastex",
-            col_align="l|CCCC",
+            col_align="l|CCCCC",
             latexdict={
                 "tabletype": "deluxetable*",
-                "caption": r"MCMC fitting results for the 10 \micron\ silicate feature. \label{tab:fit_results}",
+                "caption": r"Derived properties of the 10 \micron\ silicate feature, based on the MCMC fitting results. \label{tab:fit_results}",
             },
             overwrite=True,
         )
