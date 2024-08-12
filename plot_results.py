@@ -67,15 +67,26 @@ def plot_feat(outpath, feat_name, data, bad_mask):
     Plots with feature properties
     """
     # define the parameters to be plotted
-    xpars = ["x_0(micron)", "tau", "FWHM(micron)", "shape"]
+    # with FWHM
+    # xpars = ["x_0(micron)", "tau", "FWHM(micron)", "shape"]
+    # xlabels = [
+    #     r"$\lambda_0$ ($\mu$m)",
+    #     r"$\tau(\lambda_0)$",
+    #     r"FWHM ($\mu$m)",
+    #     r"$\alpha$",
+    # ]
+    # ypars = ["tau", "FWHM(micron)", "shape", "area(micron)"]
+    # ylabels = [r"$\tau(\lambda_0)$", r"FWHM ($\mu$m)", r"$\alpha$", r"area ($\mu$m)"]
+
+    # without FWHM
+    xpars = ["x_0(micron)", "tau", "shape"]
     xlabels = [
         r"$\lambda_0$ ($\mu$m)",
         r"$\tau(\lambda_0)$",
-        r"FWHM ($\mu$m)",
         r"$\alpha$",
     ]
-    ypars = ["tau", "FWHM(micron)", "shape", "area(micron)"]
-    ylabels = [r"$\tau(\lambda_0)$", r"FWHM ($\mu$m)", r"$\alpha$", r"area ($\mu$m)"]
+    ypars = ["tau", "shape", "area(micron)"]
+    ylabels = [r"$\tau(\lambda_0)$", r"$\alpha$", r"area ($\mu$m)"]
 
     # create the figure
     fs = 18
