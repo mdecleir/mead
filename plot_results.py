@@ -1,9 +1,10 @@
 # plot_results.py: script to plot results
 
 # import the necessary packages
+import astropy.units as u
+import math
 import numpy as np
 import os
-import astropy.units as u
 
 from astropy.table import Table, join
 from dust_extinction.shapes import FM90
@@ -80,16 +81,12 @@ def plot_feat(outpath, feat_name, data, bad_mask):
 
     # without FWHM
     xpars = ["x_0(micron)", "tau", "shape"]
-    xlabels = [
-        r"$\lambda_0$ ($\mu$m)",
-        r"$\tau(\lambda_0)$",
-        r"$\alpha$",
-    ]
+    xlabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$", r"$\alpha$"]
     ypars = ["tau", "shape", "area(micron)"]
     ylabels = [r"$\tau(\lambda_0)$", r"$\alpha$", r"area ($\mu$m)"]
 
     # create the figure
-    fs = 18
+    fs = 20
     fig, axes = plt.subplots(
         len(ypars),
         len(xpars),
@@ -135,6 +132,7 @@ def plot_feat(outpath, feat_name, data, bad_mask):
                 xerr=(xunc[0][~bad_mask], xunc[1][~bad_mask]),
                 yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask],
@@ -143,7 +141,9 @@ def plot_feat(outpath, feat_name, data, bad_mask):
                 yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
                 fmt="ok",
                 alpha=0.25,
+                markeredgewidth=0,
             )
+            axes[j, i].tick_params(axis="both", labelsize=fs * 0.8)
 
             # calculate the Spearman correlation coefficient
             axes[j, i].text(
@@ -176,6 +176,118 @@ def plot_feat(outpath, feat_name, data, bad_mask):
 
     # finalize and save the figure
     plt.subplots_adjust(hspace=0, wspace=0)
+    plt.savefig(outname, bbox_inches="tight")
+
+
+def plot_sil_lit(outpath, data, bad_mask, lit_table):
+    """
+    Function to plot the silicate feature peak optical depth vs. peak wavelength with literature data
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    data : astropy Table
+        Data to plot
+
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
+    lit_table : astropy Table
+        Literature data
+
+    Returns
+    -------
+    Plot with the silicate feature peak optical depth vs. peak wavelength with literature data
+    """
+    # create the figure
+    fs = 14
+    fig, ax = plt.subplots(1, 1, figsize=(4, 4))
+
+    # plot the data
+    ax.errorbar(
+        data["x_0(micron)"][~bad_mask],
+        data["tau"][~bad_mask],
+        xerr=(
+            data["x_0_unc_min(micron)"][~bad_mask],
+            data["x_0_unc_plus(micron)"][~bad_mask],
+        ),
+        yerr=(data["tau_unc_min"][~bad_mask], data["tau_unc_plus"][~bad_mask]),
+        fmt="ok",
+        markeredgewidth=0,
+        elinewidth=0.4,
+        label="this work",
+    )
+    ax.errorbar(
+        data["x_0(micron)"][bad_mask],
+        data["tau"][bad_mask],
+        xerr=(
+            data["x_0_unc_min(micron)"][bad_mask],
+            data["x_0_unc_plus(micron)"][bad_mask],
+        ),
+        yerr=(data["tau_unc_min"][bad_mask], data["tau_unc_plus"][bad_mask]),
+        fmt="ok",
+        alpha=0.25,
+        markeredgewidth=0,
+        elinewidth=0.4,
+    )
+
+    # add literature values
+    ax.errorbar(
+        lit_table["lambda_o1"],
+        lit_table["tau"],
+        xerr=(lit_table["lambda_o1_unc_min"], lit_table["lambda_o1_unc_plus"]),
+        yerr=(lit_table["tau_unc_min"], lit_table["tau_unc_plus"]),
+        fmt="x",
+        color="green",
+        elinewidth=0.4,
+        label="Gordon+2021",
+    )
+
+    # calculate the Spearman correlation coefficient
+    ax.text(
+        0.05,
+        0.92,
+        r"$\rho = %.2f$"
+        % spearmanr(data["x_0(micron)"][~bad_mask], data["tau"][~bad_mask])[0],
+        transform=ax.transAxes,
+        fontsize=fs * 0.8,
+        ha="left",
+    )
+    ax.text(
+        0.05,
+        0.86,
+        r"$\rho = %.2f$" % spearmanr(data["x_0(micron)"], data["tau"])[0],
+        transform=ax.transAxes,
+        fontsize=fs * 0.8,
+        ha="left",
+        alpha=0.25,
+    )
+
+    # add literature values
+    lambdas = np.concatenate((data["x_0(micron)"], lit_table["lambda_o1"]))
+    taus = np.concatenate((data["tau"], lit_table["tau"]))
+    ax.text(
+        0.05,
+        0.8,
+        r"$\rho = %.2f$" % spearmanr(lambdas, taus)[0],
+        transform=ax.transAxes,
+        fontsize=fs * 0.8,
+        ha="left",
+        color="green",
+    )
+
+    # rename the previous version of the plot
+    outname = outpath + "10_params_lit.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
+    # finalize and save the figure
+    ax.set_xlabel(r"$\lambda_0$ ($\mu$m)", fontsize=fs)
+    ax.set_ylabel(r"$\tau(\lambda_0)$", fontsize=fs)
+    ax.tick_params(axis="both", labelsize=fs * 0.8)
+    plt.legend(bbox_to_anchor=(0.5, 0.0, 0.5, 0.87))
     plt.savefig(outname, bbox_inches="tight")
 
 
@@ -913,9 +1025,9 @@ def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
 
 def main():
     # plotting settings for uniform plots
-    fs = 18
-    plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
-    plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
+    # fs = 20
+    # plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
+    # plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
 
     # define the data path and the output path
     datapath = "/Users/mdecleir/Documents/MEAD/Extinction/JWST_data/"
@@ -1002,6 +1114,30 @@ def main():
     joined_all_10["N(Fe)/AV"] = joined_all_10["N(Fe)_d"] / joined_all_10["AV"]
     joined_all_10["N(O)/AV"] = joined_all_10["N(O)_d"] / joined_all_10["AV"]
 
+    # obtain literature silicate results
+    g21_sil_table = Table.read(
+        litpath + "Gordon+2021_tab6.dat",
+        format="ascii",
+    )
+    g21_ext_table = Table.read(
+        litpath + "Gordon+2021_tab5.dat",
+        format="ascii",
+    )
+    g21_table = join(g21_ext_table, g21_sil_table, keys="Name")
+
+    # convert literature A(lambda)/A(V) to tau
+    g21_table["tau"] = (
+        2.5 * np.log10(math.e) * g21_table["S1x100"] * g21_table["A(V)"] / 100
+    )
+    g21_table["tau_unc_min"] = g21_table["tau"] * np.sqrt(
+        (g21_table["S1_unc_min"] / g21_table["S1x100"]) ** 2
+        + (g21_table["A(V)_unc_min"] / g21_table["A(V)"]) ** 2
+    )
+    g21_table["tau_unc_plus"] = g21_table["tau"] * np.sqrt(
+        (g21_table["S1_unc_plus"] / g21_table["S1x100"]) ** 2
+        + (g21_table["A(V)_unc_plus"] / g21_table["A(V)"]) ** 2
+    )
+
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
     bad_mask = np.isin(feat_10["name"], bad_stars)
@@ -1022,6 +1158,9 @@ def main():
     # create plots vs. dust column densities
     plot_feat_dcol(outpath, "10", joined_all_10, bad_mask)
     plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
+
+    # plot silicate properties with literature data added
+    plot_sil_lit(outpath, joined_all_10, bad_mask, g21_table)
 
 
 if __name__ == "__main__":
