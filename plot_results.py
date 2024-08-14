@@ -133,6 +133,7 @@ def plot_feat(outpath, feat_name, data, bad_mask):
                 yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
                 markeredgewidth=0,
+                elinewidth=0.4,
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask],
@@ -142,6 +143,7 @@ def plot_feat(outpath, feat_name, data, bad_mask):
                 fmt="ok",
                 alpha=0.25,
                 markeredgewidth=0,
+                elinewidth=0.4,
             )
             axes[j, i].tick_params(axis="both", labelsize=fs * 0.8)
 
@@ -316,16 +318,24 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     # define the parameters to be plotted
     xpars = ["AV", "A1500", "RV"]
     xlabels = ["$A(V)$", r"$A(1500\AA)$", "$R(V)$"]
-    ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
+    # with FWHM
+    # ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
+    # ylabels = [
+    #     r"$\lambda_0$ ($\mu$m)",
+    #     r"$\tau(\lambda_0)$",
+    #     r"FWHM ($\mu$m)",
+    #     r"area ($\mu$m)",
+    # ]
+    # without FWHM
+    ypars = ["x_0(micron)", "tau", "area(micron)"]
     ylabels = [
         r"$\lambda_0$ ($\mu$m)",
         r"$\tau(\lambda_0)$",
-        r"FWHM ($\mu$m)",
         r"area ($\mu$m)",
     ]
 
     # create the figure
-    fs = 18
+    fs = 20
     fig, axes = plt.subplots(
         len(ypars),
         len(xpars),
@@ -356,6 +366,8 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
                 xerr=data[xpar + "_unc"][~bad_mask],
                 yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
+                elinewidth=0.4,
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask],
@@ -363,7 +375,9 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
                 xerr=data[xpar + "_unc"][bad_mask],
                 yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
                 alpha=0.25,
+                elinewidth=0.4,
             )
 
             # calculate the Spearman correlation coefficient
@@ -385,6 +399,7 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
                 ha="left",
                 alpha=0.25,
             )
+            axes[j, i].tick_params(axis="both", labelsize=fs * 0.8)
 
             # add the y-axis label (once)
             if i == 0:
@@ -397,6 +412,159 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
 
     # finalize and save the figure
     fig.subplots_adjust(hspace=0, wspace=0)
+    fig.savefig(outname, bbox_inches="tight")
+
+
+def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
+    """
+    Function to plot the feature properties vs. A(V) and R(V) with literature data
+
+    Parameters
+    ----------
+    outpath : string
+        Path to store the plot
+
+    feat_name : string
+        Reference name for the feature
+
+    data : astropy Table
+        Data to plot
+
+    bad_mask : numpy.ndarray
+        Mask of stars with noisy data
+
+    lit_table : astropy Table
+        Literature data
+
+    Returns
+    -------
+    Plots with feature properties vs. A(V) and R(V) with literature data
+    """
+    # define the parameters to be plotted
+    xpars = ["AV", "RV"]
+    xpars_lit = ["A(V)", "R(V)"]
+    xlabels = ["$A(V)$", "$R(V)$"]
+    ypars = ["x_0(micron)", "tau"]
+    ypars_lit = ["lambda_o1", "tau"]
+    ylabels = [
+        r"$\lambda_0$ ($\mu$m)",
+        r"$\tau(\lambda_0)$",
+    ]
+
+    # create the figure
+    fs = 20
+    fig, axes = plt.subplots(
+        len(ypars),
+        len(xpars),
+        figsize=(4 * len(xpars), 4 * len(ypars)),
+        sharex="col",
+        sharey="row",
+    )
+
+    for i, (xpar, xpar_lit, xlabel) in enumerate(zip(xpars, xpars_lit, xlabels)):
+        # add the x-axis label
+        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+
+        for j, (ypar, ypar_lit, ylabel) in enumerate(zip(ypars, ypars_lit, ylabels)):
+            # obtain the y-axis uncertainties
+            if "(" in ypar:
+                index = ypar.find("(")
+                yunc = (
+                    data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
+            else:
+                yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+
+            # plot the data
+            handle1 = axes[j, i].errorbar(
+                data[xpar][~bad_mask],
+                data[ypar][~bad_mask],
+                xerr=data[xpar + "_unc"][~bad_mask],
+                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
+                fmt="ok",
+                markeredgewidth=0,
+                elinewidth=0.4,
+            )
+            axes[j, i].errorbar(
+                data[xpar][bad_mask],
+                data[ypar][bad_mask],
+                xerr=data[xpar + "_unc"][bad_mask],
+                yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
+                fmt="ok",
+                markeredgewidth=0,
+                alpha=0.25,
+                elinewidth=0.4,
+                label="this work",
+            )
+            # add literature data
+            handle2 = axes[j, i].errorbar(
+                lit_table[xpar_lit],
+                lit_table[ypar_lit],
+                xerr=(
+                    lit_table[xpar_lit + "_unc_min"],
+                    lit_table[xpar_lit + "_unc_plus"],
+                ),
+                yerr=(
+                    lit_table[ypar_lit + "_unc_min"],
+                    lit_table[ypar_lit + "_unc_plus"],
+                ),
+                fmt="x",
+                color="green",
+                elinewidth=0.4,
+                label="Gordon+2021",
+            )
+
+            # calculate the Spearman correlation coefficient
+            axes[j, i].text(
+                0.05,
+                0.92,
+                r"$\rho = %.2f$"
+                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+            )
+            axes[j, i].text(
+                0.05,
+                0.85,
+                r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+                alpha=0.25,
+            )
+            axes[j, i].tick_params(axis="both", labelsize=fs * 0.8)
+
+            # add literature values
+            xs = np.concatenate((data[xpar], lit_table[xpar_lit]))
+            ys = np.concatenate((data[ypar], lit_table[ypar_lit]))
+            axes[j, i].text(
+                0.05,
+                0.78,
+                r"$\rho = %.2f$" % spearmanr(xs, ys)[0],
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.8,
+                ha="left",
+                color="green",
+            )
+
+            # add the y-axis label (once)
+            if i == 0:
+                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+
+    # rename the previous version of the plot
+    outname = outpath + feat_name + "_AV_RV_lit.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+
+    # finalize and save the figure
+    fig.subplots_adjust(hspace=0, wspace=0)
+    labels = ["this work", "Gordon+2021"]
+    handles = [handle1, handle2]
+    fig.legend(
+        handles, labels, bbox_to_anchor=(0.91, 0.89), handletextpad=0, fontsize=0.7 * fs
+    )
     fig.savefig(outname, bbox_inches="tight")
 
 
@@ -1143,24 +1311,26 @@ def main():
     bad_mask = np.isin(feat_10["name"], bad_stars)
 
     # plot the feature properties against each other
-    plot_feat(outpath, "10", joined_all_10, bad_mask)
-
-    # create plots vs. A(V), A(1500A) and R(V)
-    plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
-    plot_feat_norm_AV_RV(outpath, "10", joined_all_10, bad_mask)
-
-    # create plots vs. the FM90 parameters
-    plot_feat_FM90(outpath, "10", joined_all_10, bad_mask)
-
-    # create plots vs. hydrogen measurements
-    plot_feat_H(outpath, "10", joined_all_10, bad_mask)
-
-    # create plots vs. dust column densities
-    plot_feat_dcol(outpath, "10", joined_all_10, bad_mask)
-    plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
+    # plot_feat(outpath, "10", joined_all_10, bad_mask)
 
     # plot silicate properties with literature data added
-    plot_sil_lit(outpath, joined_all_10, bad_mask, g21_table)
+    # plot_sil_lit(outpath, joined_all_10, bad_mask, g21_table)
+
+    # create plots vs. A(V), A(1500A) and R(V)
+    # plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
+    plot_feat_AV_RV_lit(outpath, "10", joined_all_10, bad_mask, g21_table)
+
+    # plot_feat_norm_AV_RV(outpath, "10", joined_all_10, bad_mask)
+    #
+    # # create plots vs. the FM90 parameters
+    # plot_feat_FM90(outpath, "10", joined_all_10, bad_mask)
+    #
+    # # create plots vs. hydrogen measurements
+    # plot_feat_H(outpath, "10", joined_all_10, bad_mask)
+    #
+    # # create plots vs. dust column densities
+    # plot_feat_dcol(outpath, "10", joined_all_10, bad_mask)
+    # plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
 
 
 if __name__ == "__main__":
