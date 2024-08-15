@@ -1,10 +1,10 @@
 # fit_features.py: script to fit the features in the JWST MEAD spectra
 
 # import the necessary packages
+import astropy.units as u
 import numpy as np
 import os
 
-from astropy.table import Table
 from astropy.modeling.models import (
     custom_model,
     Drude1D,
@@ -18,6 +18,8 @@ from astropy.modeling.fitting import (
     LinearLSQFitter,
 )
 from astropy.stats import sigma_clip
+from astropy.table import Table
+from dust_extinction.grain_models import WD01, D03, ZDA04, J13, HD23
 from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 from scipy import stats
@@ -130,7 +132,7 @@ def rebin_constres(data, waverange, resolution):
     return (new_waves, new_fluxes, new_uncs)
 
 
-def fit_cont(waves, fluxes, cont_mask):
+def fit_cont(waves, fluxes, cont_mask, mod=False):
     """
     Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
 
@@ -155,7 +157,14 @@ def fit_cont(waves, fluxes, cont_mask):
 
     axes : numpy.ndarray
         Plotting axes of the figure
+
+    mod : boolean [default=False]
+        Whether or not this is a model
     """
+    # if this is data, flatten the Rayleigh Jeans tail
+    if mod == False:
+        fluxes = fluxes * waves ** 2
+
     # fit the continuum
     lin_mod = Linear1D()
     lin_fitter = LinearLSQFitter()
@@ -164,7 +173,7 @@ def fit_cont(waves, fluxes, cont_mask):
     fit_result_cont, clipmask = out_fitter(
         lin_mod,
         waves[cont_mask],
-        fluxes[cont_mask] * waves[cont_mask] ** 2,
+        fluxes[cont_mask],
     )
 
     # plot the data
@@ -174,12 +183,12 @@ def fit_cont(waves, fluxes, cont_mask):
         figsize=(9, 10),
         gridspec_kw={"hspace": 0},
     )
-    axes[0].plot(waves, fluxes * waves ** 2, c="k", alpha=0.9)
+    axes[0].plot(waves, fluxes, c="k", alpha=0.9)
 
     # plot the data points that were used in the continuum fitting
     axes[0].plot(
         waves[cont_mask],
-        fluxes[cont_mask] * waves[cont_mask] ** 2,
+        fluxes[cont_mask],
         "r.",
         markersize=8,
         alpha=0.8,
@@ -189,7 +198,7 @@ def fit_cont(waves, fluxes, cont_mask):
     # cross the sigma clipped data points that were not used in the fitting
     axes[0].plot(
         waves[cont_mask][clipmask],
-        fluxes[cont_mask][clipmask] * waves[cont_mask][clipmask] ** 2,
+        fluxes[cont_mask][clipmask],
         "x",
         color="gray",
         alpha=0.8,
@@ -207,7 +216,7 @@ def fit_cont(waves, fluxes, cont_mask):
     axes[0].set_ylabel(r"$\lambda^2 F(\lambda)\: [\mu m^2 \:Jy]$", fontsize=fs)
 
     # normalize the fluxes
-    norm_fluxes = fluxes * waves ** 2 / fit_result_cont(waves)
+    norm_fluxes = fluxes / fit_result_cont(waves)
 
     # convert to optical depth (only exists in range_mask)
     taus = np.log(1 / norm_fluxes)
@@ -877,6 +886,110 @@ def fit_10(datapath, star, profile):
     return waves, taus, fit_result_feat_emcee, chains, chi2
 
 
+def fit_grain_mod(datapath):
+    """
+    Function to fit the continuum and the feature at 10 micron in dust grain models
+
+    Parameters
+    ----------
+    datapath : string
+        Path to store the output plots and tables
+
+    Returns
+    -------
+    Saves plots with dust grain models and fitted models
+    """
+    # define the wavelength grid
+    waves = _wavegrid((7.8, 13), 400)[0]
+
+    # mask out the stellar lines
+    stellar_mask = (
+        ((waves > 8.732) & (waves <= 8.775))
+        | ((waves > 9.381) & (waves <= 9.403))
+        | ((waves > 9.665) & (waves <= 9.741))
+        | ((waves > 10.446) & (waves <= 10.575))
+        | ((waves > 11.251) & (waves <= 11.387))
+        | ((waves > 12.251) & (waves <= 12.453))
+        | ((waves > 12.570) & (waves <= 12.618))
+    )
+
+    # mask the suspicious data between 11 and 12 micron
+    bad_mask = (waves > 11.15) & (waves <= 12.1)
+
+    # obtain the model extinction
+    ext_model = D03("MWRV31")
+
+    # convert the extinction curve to an extinguished spectrum, assuming a flat intrinsic spectrum (=1)
+    fluxes = ext_model.extinguish(waves * u.micron, Av=1)
+    fluxes[(stellar_mask) | (bad_mask)] = np.nan
+
+    # define masks for the continuum fitting
+    feat_reg_mask = (waves > 8.2) & (waves <= 12.4)
+    cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
+
+    # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, mod=True)
+
+    # define the mask for the feature fitting
+    feat_fit_mask = feat_reg_mask & ~np.isnan(taus)
+
+    # define the uncertainties
+    emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
+
+    # define the initial model to fit the feature
+    gauss_skew_mod = custom_model(gauss_skew_func)
+    feat_mod = gauss_skew_mod(
+        amplitude=0.1,
+        loc=9,
+        scale=1,
+        shape=2,
+    )
+
+    # fit and plot the feature
+    fit_result_feat_emcee, chains, chi2 = fit_feature(
+        datapath + "MIRI/",
+        datapath,
+        "D03",
+        feat_mod,
+        waves[feat_fit_mask],
+        taus[feat_fit_mask],
+        emp_uncs,
+        axes,
+        waves,
+        "10",
+    )
+
+    # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
+    area16, area, area84 = np.percentile(chains[:, 0], [16, 50, 84])
+    area_unc_min = area - area16
+    area_unc_plus = area84 - area
+
+    # write the result to a table
+    names = (
+        "name",
+        "area(micron)",
+        "area_unc_min(micron)",
+        "area_unc_plus(micron)",
+    )
+    dtypes = np.full(len(names), "float64")
+    dtypes[0] = "str"
+    table_txt = Table(names=names, dtype=dtypes)
+
+    result_list = [
+        area,
+        area_unc_min,
+        area_unc_plus,
+    ]
+    table_txt.add_row(("D03", *result_list))
+
+    # write the table to a file
+    table_txt.write(
+        datapath + "fit_results_mod.txt",
+        format="ascii",
+        overwrite=True,
+    )
+
+
 def fit_all(datapath, stars, sort_idx):
     """
     Fit all features for all stars
@@ -1250,7 +1363,10 @@ def main():
     # plt.show()
 
     # fit and plot all features for all stars
-    fit_all(datapath, stars, sort_idx)
+    # fit_all(datapath, stars, sort_idx)
+
+    # fit the feature for some dust grain models
+    fit_grain_mod(datapath)
 
 
 if __name__ == "__main__":
