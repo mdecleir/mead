@@ -19,7 +19,7 @@ from astropy.modeling.fitting import (
 )
 from astropy.stats import sigma_clip
 from astropy.table import Table
-from dust_extinction.grain_models import WD01, D03, ZDA04, J13, HD23
+from dust_extinction.grain_models import WD01, D03, ZDA04, J13, HD23, Y24
 from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
 from scipy import stats
@@ -807,11 +807,11 @@ def fit_10(datapath, star, profile):
 
     # rebin the spectrum, and select the relevant region
     waves, fluxes, uncs = rebin_constres(
-        data[(~stellar_mask) & (~bad_mask)], (7.8, 13), 400
+        data[(~stellar_mask) & (~bad_mask)], (7.9, 12.8), 400
     )
 
     # define masks for the continuum fitting
-    feat_reg_mask = (waves > 8.2) & (waves <= 12.4)
+    feat_reg_mask = (waves > 8.1) & (waves <= 12.6)
     # feature region per star:
     # 8.46-12.3, 8.1-12.19, 8.34-12.18, 8.47-12.1, 8.13-12.21, 8.08-12.11, 8.15-12.22, 8.20-12.33
     # 8.12-11.96, 8.07-12.19, 8.35-12.27, 8.42-12.02, 8.19-12.10, 8.15-12.10, 8.15-12.15, 8.31-12.29
@@ -899,8 +899,12 @@ def fit_grain_mod(datapath):
     -------
     Saves plots with dust grain models and fitted models
     """
+    # define the dust grain models to be fitted
+    grmods = [WD01, D03, ZDA04, J13, HD23, Y24]
+    mod_names = ["MWRV31", "MWRV31", "BARE-GR-S", "MWRV31", "MWRV31", "MWRV31"]
+
     # define the wavelength grid
-    waves = _wavegrid((7.8, 13), 400)[0]
+    waves = _wavegrid((7.9, 12.8), 400)[0]
 
     # mask out the stellar lines
     stellar_mask = (
@@ -916,25 +920,8 @@ def fit_grain_mod(datapath):
     # mask the suspicious data between 11 and 12 micron
     bad_mask = (waves > 11.15) & (waves <= 12.1)
 
-    # obtain the model extinction
-    ext_model = D03("MWRV31")
-
-    # convert the extinction curve to an extinguished spectrum, assuming a flat intrinsic spectrum (=1)
-    fluxes = ext_model.extinguish(waves * u.micron, Av=1)
-    fluxes[(stellar_mask) | (bad_mask)] = np.nan
-
-    # define masks for the continuum fitting
-    feat_reg_mask = (waves > 8.2) & (waves <= 12.4)
-    cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
-
-    # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
-    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, mod=True)
-
-    # define the mask for the feature fitting
-    feat_fit_mask = feat_reg_mask & ~np.isnan(taus)
-
-    # define the uncertainties
-    emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
+    # define the feature mask
+    feat_reg_mask = (waves > 8.1) & (waves <= 12.6)
 
     # define the initial model to fit the feature
     gauss_skew_mod = custom_model(gauss_skew_func)
@@ -945,26 +932,7 @@ def fit_grain_mod(datapath):
         shape=2,
     )
 
-    # fit and plot the feature
-    fit_result_feat_emcee, chains, chi2 = fit_feature(
-        datapath + "MIRI/",
-        datapath,
-        "D03",
-        feat_mod,
-        waves[feat_fit_mask],
-        taus[feat_fit_mask],
-        emp_uncs,
-        axes,
-        waves,
-        "10",
-    )
-
-    # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
-    area16, area, area84 = np.percentile(chains[:, 0], [16, 50, 84])
-    area_unc_min = area - area16
-    area_unc_plus = area84 - area
-
-    # write the result to a table
+    # create a table to store the results
     names = (
         "name",
         "area(micron)",
@@ -975,12 +943,52 @@ def fit_grain_mod(datapath):
     dtypes[0] = "str"
     table_txt = Table(names=names, dtype=dtypes)
 
-    result_list = [
-        area,
-        area_unc_min,
-        area_unc_plus,
-    ]
-    table_txt.add_row(("D03", *result_list))
+    for grmod, mod_name in zip(grmods, mod_names):
+        # obtain the model extinction
+        ext_model = grmod(mod_name)
+
+        # convert the extinction curve to an extinguished spectrum, assuming a flat intrinsic spectrum (=1)
+        fluxes = ext_model.extinguish(waves * u.micron, Av=1)
+        fluxes[(stellar_mask) | (bad_mask)] = np.nan
+
+        # define masks for the continuum fitting
+        cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
+
+        # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+        taus, unc, axes = fit_cont(waves, fluxes, cont_mask, mod=True)
+
+        # define the mask for the feature fitting
+        feat_fit_mask = feat_reg_mask & ~np.isnan(taus)
+
+        # define the uncertainties
+        emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
+
+        # fit and plot the feature
+        fit_result_feat_emcee, chains, chi2 = fit_feature(
+            datapath + "MIRI/",
+            datapath,
+            f"{ext_model.__class__.__name__}",
+            feat_mod,
+            waves[feat_fit_mask],
+            taus[feat_fit_mask],
+            emp_uncs,
+            axes,
+            waves,
+            "10",
+        )
+
+        # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
+        area16, area, area84 = np.percentile(chains[:, 0], [16, 50, 84])
+        area_unc_min = area - area16
+        area_unc_plus = area84 - area
+
+        # add the results to the table
+        result_list = [
+            area,
+            area_unc_min,
+            area_unc_plus,
+        ]
+        table_txt.add_row((f"{ext_model.__class__.__name__}", *result_list))
 
     # write the table to a file
     table_txt.write(
@@ -1363,7 +1371,7 @@ def main():
     # plt.show()
 
     # fit and plot all features for all stars
-    # fit_all(datapath, stars, sort_idx)
+    fit_all(datapath, stars, sort_idx)
 
     # fit the feature for some dust grain models
     fit_grain_mod(datapath)
