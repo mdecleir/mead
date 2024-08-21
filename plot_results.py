@@ -1065,6 +1065,9 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     # entirely remove bad star
     del_mask = data["name"] == "HD014434"
 
+    # create a new latex table
+    table_tex = Table()
+
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # add the x-axis label
         axes[-1, i].set_xlabel(xlabel, fontsize=fs)
@@ -1127,18 +1130,39 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
             ys = data[ypar][~del_mask]
             fitted_line = fitter(line_mod, xs, ys)
             axes[j, i].plot(xs * 1e17, fitted_line(xs), c="k", label="data")
+            axes[j, i].text(
+                0.4,
+                0.9,
+                r"y=%.1ex+%.2f"
+                % (fitted_line.slope.value * 1e-17, fitted_line.intercept.value),
+                transform=axes[j, i].transAxes,
+                fontsize=fs * 0.7,
+            )
+
+            # create a list for the slopes
+            slope_list = ["%.1e" % (fitted_line.slope.value * 1e-17)]
 
             # calculate the x-value for y=0: y=ax+b --> x0=-b/a
             zeropoint = -fitted_line.intercept / fitted_line.slope
 
             # add dust grain models
             for model in grmod_table:
-                slope = model[ypar] / model[xpar.replace("_d", "/AV")]
+                AVs = np.array([1.2, 2.5])
                 axes[j, i].plot(
-                    data[xpar][~del_mask],
-                    slope * data[xpar][~del_mask],
+                    model[xpar.replace("_d", "/AV")] * AVs,
+                    model[ypar] * AVs,
                     label=model["model"],
                 )
+                slope_list.append(
+                    "%.1e" % (model[ypar] / model[xpar.replace("_d", "/AV")])
+                )
+
+            # save the slopes to the table
+            if ypar == "tau":
+                ypar = r"$\tau(\lambda_0)$"
+            table_tex[
+                ypar.replace("(micron)", "") + "/" + xpar.replace("_d", "")
+            ] = slope_list
 
             # add the y-axis label (once)
             if i == 0:
@@ -1151,10 +1175,21 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
 
     # finalize and save the figure
     axes[-1, -1].legend(loc=4, fontsize=fs * 0.7)
-    axes[0, 0].set_ylim(0, 0.15)
-    axes[1, 0].set_ylim(0, 0.3)
     fig.subplots_adjust(hspace=0, wspace=0)
     fig.savefig(outname, bbox_inches="tight")
+
+    # write the table to a file
+    table_tex.add_column(["data", *grmod_table["model"]], name="model/data", index=0)
+    table_tex.write(
+        outpath + "grain_models.tex",
+        format="aastex",
+        col_align="l|cccccc",
+        latexdict={
+            "tabletype": "deluxetable*",
+            "caption": r"Slopes of lines in Fig~\ref{fig:feat_dcol} for the fitted line to the data points, and for the dust grain models. \label{tab:grmods}",
+        },
+        overwrite=True,
+    )
 
 
 def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
@@ -1414,6 +1449,7 @@ def main():
         grmod_table["Fe"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
     )
     grmod_table["N(O)/AV"] = grmod_table["O"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
+    grmod_table = grmod_table[[0, 2, 1]]
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
