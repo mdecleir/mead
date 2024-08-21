@@ -6,6 +6,8 @@ import math
 import numpy as np
 import os
 
+from astropy.modeling.fitting import LinearLSQFitter
+from astropy.modeling.models import Linear1D
 from astropy.table import Table, join
 from dust_extinction.shapes import FM90
 from matplotlib import pyplot as plt
@@ -992,7 +994,7 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_dcol(outpath, feat_name, data, bad_mask):
+def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     """
     Function to plot the feature properties vs. the dust column densities and ratios
 
@@ -1010,36 +1012,48 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask):
     bad_mask : numpy.ndarray
         Mask of stars with noisy data
 
+    grmod_table : astropy Table
+        Data from grain models
+
     Returns
     -------
     Plots with feature properties vs. dust column densities and ratios
     """
     # define the parameters to be plotted
-    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d", "N(Mg)/N(Fe)", "N(Mg)/N(O)", "N(Fe)/N(O)"]
-    xlabels = [
-        "N(Mg)$_{dust}$",
-        "N(Fe)$_{dust}$",
-        "N(O)$_{dust}$",
-        "N(Mg)/N(Fe)",
-        "N(Mg)/N(O)",
-        "N(Fe)/N(O)",
-    ]
-
-    ypars = [
-        "tau",
-        "x_0(micron)",
-        "FWHM(micron)",
-        "area(micron)",
-    ]
-    ylabels = [
-        r"$\tau(\lambda_0)$",
-        r"$\lambda_0$ ($\mu$m)",
-        r"FWHM ($\mu$m)",
-        r"area ($\mu$m)",
-    ]
+    # with the ratios
+    # xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d", "N(Mg)/N(Fe)", "N(Mg)/N(O)", "N(Fe)/N(O)"]
+    # xlabels = [
+    #     "N(Mg)$_{dust}$",
+    #     "N(Fe)$_{dust}$",
+    #     "N(O)$_{dust}$",
+    #     "N(Mg)/N(Fe)",
+    #     "N(Mg)/N(O)",
+    #     "N(Fe)/N(O)",
+    # ]
+    # without the ratios
+    xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
+    xlabels = ["N(Mg)$_{dust}$", "N(Fe)$_{dust}$", "N(O)$_{dust}$"]
+    # with lambda_0 and FWHM
+    # ypars = [
+    #     "tau",
+    #     "x_0(micron)",
+    #     "FWHM(micron)",
+    #     "area(micron)",
+    # ]
+    # ylabels = [
+    #     r"$\tau(\lambda_0)$",
+    #     r"$\lambda_0$ ($\mu$m)",
+    #     r"FWHM ($\mu$m)",
+    #     r"area ($\mu$m)",
+    # ]
+    # without lambda_0 and FWHM
+    ypars = ["tau", "area(micron)"]
+    ylabels = [r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
 
     # create the figure
     fs = 20
+    plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
+    plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
     fig, axes = plt.subplots(
         len(ypars),
         len(xpars),
@@ -1105,7 +1119,26 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask):
                 ha="left",
                 alpha=0.25,
             )
-            axes[j, i].tick_params(axis="both", labelsize=fs * 0.8)
+
+            # fit the data with a line
+            fitter = LinearLSQFitter()
+            line_mod = Linear1D()
+            xs = data[xpar][~del_mask] * 1e-17
+            ys = data[ypar][~del_mask]
+            fitted_line = fitter(line_mod, xs, ys)
+            axes[j, i].plot(xs * 1e17, fitted_line(xs), c="k", label="data")
+
+            # calculate the x-value for y=0: y=ax+b --> x0=-b/a
+            zeropoint = -fitted_line.intercept / fitted_line.slope
+
+            # add dust grain models
+            for model in grmod_table:
+                slope = model[ypar] / model[xpar.replace("_d", "/AV")]
+                axes[j, i].plot(
+                    data[xpar][~del_mask],
+                    slope * data[xpar][~del_mask],
+                    label=model["model"],
+                )
 
             # add the y-axis label (once)
             if i == 0:
@@ -1117,6 +1150,9 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
 
     # finalize and save the figure
+    axes[-1, -1].legend(loc=4, fontsize=fs * 0.7)
+    axes[0, 0].set_ylim(0, 0.15)
+    axes[1, 0].set_ylim(0, 0.3)
     fig.subplots_adjust(hspace=0, wspace=0)
     fig.savefig(outname, bbox_inches="tight")
 
@@ -1345,14 +1381,8 @@ def main():
     joined_all_10["N(O)/AV"] = joined_all_10["N(O)_d"] / joined_all_10["AV"]
 
     # obtain literature silicate results
-    g21_sil_table = Table.read(
-        litpath + "Gordon+2021_tab6.dat",
-        format="ascii",
-    )
-    g21_ext_table = Table.read(
-        litpath + "Gordon+2021_tab5.dat",
-        format="ascii",
-    )
+    g21_sil_table = Table.read(litpath + "Gordon+2021_tab6.dat", format="ascii")
+    g21_ext_table = Table.read(litpath + "Gordon+2021_tab5.dat", format="ascii")
     g21_table = join(g21_ext_table, g21_sil_table, keys="Name")
 
     # convert literature A(lambda)/A(V) to tau
@@ -1372,6 +1402,18 @@ def main():
     g21_table["tau/AV_unc_plus"] = (
         2.5 * np.log10(math.e) * g21_table["S1_unc_plus"] / 100
     )
+
+    # calculate dust grain model dust column densities
+    grmod_col = Table.read(litpath + "grain_model_abundances.dat", format="ascii")
+    grmod_fit = Table.read(datapath + "fit_results_mod.txt", format="ascii")
+    grmod_table = join(grmod_col, grmod_fit, keys_left="model", keys_right="name")
+    grmod_table["N(Mg)/AV"] = (
+        grmod_table["Mg"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
+    )
+    grmod_table["N(Fe)/AV"] = (
+        grmod_table["Fe"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
+    )
+    grmod_table["N(O)/AV"] = grmod_table["O"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
@@ -1395,7 +1437,7 @@ def main():
     # plot_feat_H(outpath, "10", joined_all_10, bad_mask)
     #
     # create plots vs. dust column densities
-    plot_feat_dcol(outpath, "10", joined_all_10, bad_mask)
+    plot_feat_dcol(outpath, "10", joined_all_10, bad_mask, grmod_table)
     # plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
 
 
