@@ -330,11 +330,7 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     # ]
     # without FWHM
     ypars = ["x_0(micron)", "tau", "area(micron)"]
-    ylabels = [
-        r"$\lambda_0$ ($\mu$m)",
-        r"$\tau(\lambda_0)$",
-        r"area ($\mu$m)",
-    ]
+    ylabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
 
     # create the figure
     fs = 20
@@ -605,7 +601,6 @@ def plot_feat_norm_AV_RV(outpath, feat_name, data, bad_mask, lit_table):
     xpars_lit = ["A(V)", "R(V)"]
     xlabels = ["$A(V)$", "$R(V)$"]
     ypars = ["tau/AV", "area/AV"]
-
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"area/$A(V)$ ($\mu$m)",
@@ -780,12 +775,7 @@ def plot_feat_FM90(outpath, feat_name, data, bad_mask):
         np.sqrt(data["C4_runc"] ** 2 + data["C4_sunc"] ** 2),
     ]
 
-    ypars = [
-        "tau/AV",
-        "x_0(micron)",
-        "FWHM(micron)",
-        "area/AV",
-    ]
+    ypars = ["tau/AV", "x_0(micron)", "FWHM(micron)", "area/AV"]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
@@ -794,7 +784,9 @@ def plot_feat_FM90(outpath, feat_name, data, bad_mask):
     ]
 
     # create the figure
-    fs = 18
+    fs = 20
+    plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
+    plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
     fig, axes = plt.subplots(
         len(ypars),
         len(xpars),
@@ -825,6 +817,8 @@ def plot_feat_FM90(outpath, feat_name, data, bad_mask):
                 xerr=xunc[~bad_mask],
                 yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
+                elinewidth=0.4,
             )
             axes[j, i].errorbar(
                 xpar[bad_mask],
@@ -832,7 +826,9 @@ def plot_feat_FM90(outpath, feat_name, data, bad_mask):
                 xerr=xunc[bad_mask],
                 yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
                 alpha=0.25,
+                elinewidth=0.4,
             )
 
             # calculate the Spearman correlation coefficient
@@ -892,33 +888,30 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
     Plots with feature properties vs. hydrogen measurements
     """
     # define the parameters to be plotted
-    xpars = [
-        "logNH",
-        "logNHI",
-        "logNH2",
-        "fH2",
-    ]
-    xlabels = [
-        "log(N(H))",
-        "log(N(HI))",
-        "log(N(H$_2$))",
-        "f(H$_2$) = 2N(H$_2$)/N(H)",
-    ]
-    ypars = [
-        "tau/AV",
-        "x_0(micron)",
-        "FWHM(micron)",
-        "area/AV",
-    ]
-    ylabels = [
-        r"$\tau(\lambda_0)/A(V)$",
-        r"$\lambda_0$ ($\mu$m)",
-        r"FWHM ($\mu$m)",
-        r"area/$A(V)$ ($\mu$m)",
-    ]
+    # with f(H2)
+    # xpars = ["logNH", "logNHI", "logNH2", "fH2"]
+    # xlabels = ["log(N(H))", "log(N(HI))", "log(N(H$_2$))", "f(H$_2$) = 2N(H$_2$)/N(H)"]
+    # with tau/AV, lambda_0 and FWHM, area/AV
+    # ypars = ["tau", "tau/AV", "x_0(micron)", "FWHM(micron)", "area(micron)", "area/AV"]
+    # ylabels = [
+    #     r"$\tau(\lambda_0)$",
+    #     r"$\tau(\lambda_0)/A(V)$",
+    #     r"$\lambda_0$ ($\mu$m)",
+    #     r"FWHM ($\mu$m)",
+    #     r"area ($\mu$m)",
+    #     r"area/$A(V)$ ($\mu$m)",
+    # ]
+    # without f(H2)
+    xpars = ["logNH", "logNHI", "logNH2"]
+    xlabels = ["log(N(H))", "log(N(HI))", "log(N(H$_2$))"]
+    # without tau/AV, lambda_0 and FWHM, area/AV
+    ypars = ["tau", "area(micron)"]
+    ylabels = [r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
 
     # create the figure
-    fs = 18
+    fs = 20
+    plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
+    plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
     fig, axes = plt.subplots(
         len(ypars),
         len(xpars),
@@ -949,6 +942,8 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
                 xerr=data["e_" + xpar][~bad_mask],
                 yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
+                elinewidth=0.4,
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask],
@@ -956,7 +951,9 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
                 xerr=data["e_" + xpar][bad_mask],
                 yerr=(yunc[0][bad_mask], yunc[1][bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
                 alpha=0.25,
+                elinewidth=0.4,
             )
 
             # calculate the Spearman correlation coefficient
@@ -1034,12 +1031,7 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
     xlabels = ["N(Mg)$_{dust}$", "N(Fe)$_{dust}$", "N(O)$_{dust}$"]
     # with lambda_0 and FWHM
-    # ypars = [
-    #     "tau",
-    #     "x_0(micron)",
-    #     "FWHM(micron)",
-    #     "area(micron)",
-    # ]
+    # ypars = ["tau", "x_0(micron)", "FWHM(micron)", "area(micron)"]
     # ylabels = [
     #     r"$\tau(\lambda_0)$",
     #     r"$\lambda_0$ ($\mu$m)",
@@ -1271,13 +1263,7 @@ def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
         "N(Mg)/N(O)",
         "N(Fe)/N(O)",
     ]
-
-    ypars = [
-        "tau/AV",
-        "x_0(micron)",
-        "FWHM(micron)",
-        "area/AV",
-    ]
+    ypars = ["tau/AV", "x_0(micron)", "FWHM(micron)", "area/AV"]
     ylabels = [
         r"$\tau(\lambda_0)/A(V)$",
         r"$\lambda_0$ ($\mu$m)",
@@ -1502,22 +1488,22 @@ def main():
     bad_mask = np.isin(feat_10["name"], bad_stars)
 
     # plot the feature properties against each other
-    # plot_feat(outpath, "10", joined_all_10, bad_mask)
+    plot_feat(outpath, "10", joined_all_10, bad_mask)
 
     # plot silicate properties with literature data added
-    # plot_sil_lit(outpath, joined_all_10, bad_mask, g21_table)
+    plot_sil_lit(outpath, joined_all_10, bad_mask, g21_table)
 
     # create plots vs. A(V), A(1500A) and R(V)
-    # plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
-    # plot_feat_AV_RV_lit(outpath, "10", joined_all_10, bad_mask, g21_table)
-    # plot_feat_norm_AV_RV(outpath, "10", joined_all_10, bad_mask, g21_table)
+    plot_feat_AV_RV(outpath, "10", joined_all_10, bad_mask)
+    plot_feat_AV_RV_lit(outpath, "10", joined_all_10, bad_mask, g21_table)
+    plot_feat_norm_AV_RV(outpath, "10", joined_all_10, bad_mask, g21_table)
 
-    # # create plots vs. the FM90 parameters
-    # plot_feat_FM90(outpath, "10", joined_all_10, bad_mask)
-    #
-    # # create plots vs. hydrogen measurements
-    # plot_feat_H(outpath, "10", joined_all_10, bad_mask)
-    #
+    # create plots vs. the FM90 parameters
+    plot_feat_FM90(outpath, "10", joined_all_10, bad_mask)
+
+    # create plots vs. hydrogen measurements
+    plot_feat_H(outpath, "10", joined_all_10, bad_mask)
+
     # create plots vs. dust column densities
     plot_feat_dcol(outpath, "10", joined_all_10, bad_mask, grmod_table)
     plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
