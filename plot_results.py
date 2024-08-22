@@ -1065,8 +1065,8 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     # entirely remove bad star
     del_mask = data["name"] == "HD014434"
 
-    # create a new latex table
-    table_tex = Table()
+    # create a new table
+    table_slopes = Table()
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # add the x-axis label
@@ -1140,7 +1140,7 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
             )
 
             # create a list for the slopes
-            slope_list = ["%.1e" % (fitted_line.slope.value * 1e-17)]
+            slope_list = [fitted_line.slope.value * 1e-17]
 
             # calculate the x-value for y=0: y=ax+b --> x0=-b/a
             zeropoint = -fitted_line.intercept / fitted_line.slope
@@ -1153,15 +1153,13 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
                     model[ypar] * AVs,
                     label=model["model"],
                 )
-                slope_list.append(
-                    "%.1e" % (model[ypar] / model[xpar.replace("_d", "/AV")])
-                )
+                slope_list.append(model[ypar] / model[xpar.replace("_d", "/AV")])
 
             # save the slopes to the table
-            if ypar == "tau":
-                ypar = r"$\tau(\lambda_0)$"
-            table_tex[
-                ypar.replace("(micron)", "") + "/" + xpar.replace("_d", "")
+            table_slopes[
+                ypar.replace("(micron)", "").replace("tau", r"$\tau$")
+                + "/"
+                + xpar.replace("_d", "")
             ] = slope_list
 
             # add the y-axis label (once)
@@ -1178,15 +1176,57 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     fig.subplots_adjust(hspace=0, wspace=0)
     fig.savefig(outname, bbox_inches="tight")
 
+    # calculate the ratios of the slopes
+    table_slopes["N(Mg)/N(Fe)"] = (
+        table_slopes["area/N(Fe)"] / table_slopes["area/N(Mg)"]
+    )
+    table_slopes["N(Mg)/N(O)"] = table_slopes["area/N(O)"] / table_slopes["area/N(Mg)"]
+    table_slopes["N(Fe)/N(O)"] = table_slopes["area/N(O)"] / table_slopes["area/N(Fe)"]
+    table_slopes["Mg:Fe:O"] = [
+        "%.1f" % table_slopes["N(Mg)/N(Fe)"][0]
+        + ":1:"
+        + "%.1f" % (1 / table_slopes["N(Fe)/N(O)"][0]),
+        str(round(table_slopes["N(Mg)/N(Fe)"][1]))
+        + ":1:"
+        + str(round(1 / table_slopes["N(Fe)/N(O)"][1])),
+        str(round(table_slopes["N(Mg)/N(Fe)"][2]))
+        + ":1:"
+        + str(round(1 / table_slopes["N(Fe)/N(O)"][2])),
+        "%.1f" % table_slopes["N(Mg)/N(Fe)"][3]
+        + ":1:"
+        + str(round(1 / table_slopes["N(Fe)/N(O)"][3])),
+    ]
+    MgFe_t = table_slopes[r"$\tau$/N(Fe)"][0] / table_slopes[r"$\tau$/N(Mg)"][0]
+    MgO_t = table_slopes[r"$\tau$/N(O)"][0] / table_slopes[r"$\tau$/N(Mg)"][0]
+    FeO_t = table_slopes[r"$\tau$/N(O)"][0] / table_slopes[r"$\tau$/N(Fe)"][0]
+
     # write the table to a file
-    table_tex.add_column(["data", *grmod_table["model"]], name="model/data", index=0)
-    table_tex.write(
+    table_slopes.add_column(["data", *grmod_table["model"]], name="Line", index=0)
+    table_slopes.write(
         outpath + "grain_models.tex",
         format="aastex",
-        col_align="l|cccccc",
+        col_align="l|cccccccccc",
         latexdict={
             "tabletype": "deluxetable*",
-            "caption": r"Slopes of lines in Fig~\ref{fig:feat_dcol} for the fitted line to the data points, and for the dust grain models. \label{tab:grmods}",
+            "caption": r"Slopes of lines in Fig.~\ref{fig:feat_dcol} for the fitted line to the data points, and for the dust grain models, and ratios between slopes. \label{tab:grmods}",
+            "tablefoot": r"\tablenotetext{*}{These values are derived from the slopes of integrated area vs. column density. The values for $\tau$ are very similar: "
+            + "%.2f" % MgFe_t
+            + ", "
+            + "%.2f" % MgO_t
+            + ", and "
+            + "%.2f" % FeO_t
+            + " for N(Mg)/N(Fe), N(Mg)/N(O), and N(Fe)/N(O), respectively.}",
+        },
+        formats={
+            r"$\tau$/N(Mg)": "%.1e",
+            r"$\tau$/N(Fe)": "%.1e",
+            r"$\tau$/N(O)": "%.1e",
+            "area/N(Mg)": "%.1e",
+            "area/N(Fe)": "%.1e",
+            "area/N(O)": "%.1e",
+            "N(Mg)/N(Fe)": ".2f",
+            "N(Mg)/N(O)": ".2f",
+            "N(Fe)/N(O)": ".2f",
         },
         overwrite=True,
     )
@@ -1246,7 +1286,9 @@ def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
     ]
 
     # create the figure
-    fs = 18
+    fs = 20
+    plt.rc("xtick", top=True, direction="in", labelsize=fs * 0.8)
+    plt.rc("ytick", right=True, direction="in", labelsize=fs * 0.8)
     fig, axes = plt.subplots(
         len(ypars),
         len(xpars),
@@ -1279,13 +1321,17 @@ def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
                 data[ypar][~bad_mask],
                 yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
                 fmt="ok",
+                markeredgewidth=0,
+                elinewidth=0.4,
             )
             axes[j, i].errorbar(
                 data[xpar][bad_mask & ~del_mask],
                 data[ypar][bad_mask & ~del_mask],
                 yerr=(yunc[0][bad_mask & ~del_mask], yunc[1][bad_mask & ~del_mask]),
                 fmt="ok",
+                markeredgewidth=0,
                 alpha=0.25,
+                elinewidth=0.4,
             )
 
             # calculate the Spearman correlation coefficient
@@ -1474,7 +1520,7 @@ def main():
     #
     # create plots vs. dust column densities
     plot_feat_dcol(outpath, "10", joined_all_10, bad_mask, grmod_table)
-    # plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
+    plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
 
 
 if __name__ == "__main__":
