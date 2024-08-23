@@ -19,6 +19,7 @@ from astropy.modeling.models import (
 )
 from astropy.stats import sigma_clip
 from astropy.table import Table
+
 from dust_extinction.grain_models import WD01, D03, ZDA04, J13, HD23, Y24
 from matplotlib import pyplot as plt
 from models_mcmc_extension import EmceeFitter
@@ -1356,7 +1357,7 @@ def fit_all(datapath, stars, sort_idx):
         )
 
 
-def stack_spectra_34(datapath, stars):
+def stack_spectra_34(datapath, stars, ext_table):
     """
     Function to stack the optical depth around the 3.4 micron feature
 
@@ -1368,15 +1369,19 @@ def stack_spectra_34(datapath, stars):
     stars : list
         Star names
 
+    ext_table : astropy Table
+        Extinction properties
+
     Returns
     -------
     Stacked optical depths
     """
+    # create an empty list to store the optical depths
     tau_list = []
 
     # create the figure
     fs = 18
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6, 6))
 
     for star in stars:
         # obtain the data
@@ -1423,7 +1428,6 @@ def stack_spectra_34(datapath, stars):
 
         # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
         taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
-        tau_list.append(taus)
 
         # rename the previous version of the plot
         outname = datapath + star + "_34_cont.pdf"
@@ -1431,18 +1435,23 @@ def stack_spectra_34(datapath, stars):
             os.rename(outname, outname.split(".")[0] + "_0.pdf")
         plt.savefig(outname, bbox_inches="tight")
 
-        # plot the optical depths
-        ax.plot(waves, taus)
+        # obtain A(V), and normalize the optical depths
+        tab_mask = ext_table["Name"] == star
+        tau_list.append(taus / ext_table["AV"][tab_mask])
 
-    # stack all optical depths
-    summed_taus = np.sum(tau_list, axis=0)
-    ax.plot(waves, summed_taus, c="k")
+        # plot the normalized optical depths
+        ax.plot(waves, taus / ext_table["AV"][tab_mask], lw=1, alpha=0.6)
+
+    # average the normalized optical depths
+    ave_taus = np.mean(tau_list, axis=0)
+    ax.plot(waves, ave_taus, c="k", lw=3)
 
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
-    ax.set_ylabel(r"$\tau(\lambda)$", fontsize=fs)
+    ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+    ax.axhline(c="k", ls=":", alpha=0.5)
     # rename the previous version of the plot
-    outname = datapath + "all_34.pdf"
+    outname = datapath + "34_all.pdf"
     if os.path.isfile(outname):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
     fig.savefig(outname, bbox_inches="tight")
@@ -1501,8 +1510,14 @@ def main():
     # fit the feature for some dust grain models
     # fit_grain_mod(datapath)
 
+    # obtain the extinction properties
+    ext_table = Table.read(
+        "/Users/mdecleir/Documents/MEAD/Literature_data/Gordon+2009_tab2.dat",
+        format="ascii",
+    )
+
     # stack the spectra around 3.4 micron
-    stack_spectra_34(datapath, stars)
+    stack_spectra_34(datapath, stars, ext_table)
 
 
 if __name__ == "__main__":
