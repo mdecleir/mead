@@ -5,17 +5,17 @@ import astropy.units as u
 import numpy as np
 import os
 
+from astropy.modeling.fitting import (
+    FittingWithOutlierRemoval,
+    LevMarLSQFitter,
+    LinearLSQFitter,
+)
 from astropy.modeling.models import (
     custom_model,
     Drude1D,
     Gaussian1D,
     Polynomial1D,
     Linear1D,
-)
-from astropy.modeling.fitting import (
-    FittingWithOutlierRemoval,
-    LevMarLSQFitter,
-    LinearLSQFitter,
 )
 from astropy.stats import sigma_clip
 from astropy.table import Table
@@ -935,6 +935,9 @@ def fit_grain_mod(datapath):
     # create a table to store the results
     names = (
         "name",
+        "tau",
+        "tau_unc_min",
+        "tau_unc_plus",
         "area(micron)",
         "area_unc_min(micron)",
         "area_unc_plus(micron)",
@@ -977,6 +980,33 @@ def fit_grain_mod(datapath):
             "10",
         )
 
+        amplitudes = chains[:, 0]
+        locs = chains[:, 1]
+        scales = chains[:, 2]
+        shapes = chains[:, 3]
+        # calculate the mode (i.e. peak wavelength) (in micron)
+        # delta = shape / sqrt(1+shape^2)
+        # m0 = sqrt(2/pi) * delta - (1 - pi/4) * (sqrt(2/pi)*delta)^3 / (1-2/pi*delta^2) - sgn(shape)/2 * exp(-2pi/|shape|)
+        # mode = location + scale * m0
+        deltas = shapes / np.sqrt(1 + shapes ** 2)
+        m0s = (
+            np.sqrt(2 / np.pi) * deltas
+            - (1 - np.pi / 4)
+            * (np.sqrt(2 / np.pi) * deltas) ** 3
+            / (1 - 2 / np.pi * deltas ** 2)
+            - np.sign(shapes) / 2 * np.exp(-2 * np.pi / np.absolute(shapes))
+        )
+        mode_chain = locs + scales * m0s
+        mode16, mode, mode84 = np.percentile(mode_chain, [16, 50, 84])
+        mode_unc_min = mode - mode16
+        mode_unc_plus = mode84 - mode
+
+        # calculate the maximum optical depth (i.e. at the peak wavelength)
+        tau_chain = gauss_skew_func(mode_chain, amplitudes, locs, scales, shapes)
+        tau16, tau, tau84 = np.percentile(tau_chain, [16, 50, 84])
+        tau_unc_min = tau - tau16
+        tau_unc_plus = tau84 - tau
+
         # calculate the area (is equal to the amplitude, given that the pdf of the scipy skewnorm is normalized to 1)
         area16, area, area84 = np.percentile(chains[:, 0], [16, 50, 84])
         area_unc_min = area - area16
@@ -984,6 +1014,9 @@ def fit_grain_mod(datapath):
 
         # add the results to the table
         result_list = [
+            tau,
+            tau_unc_min,
+            tau_unc_plus,
             area,
             area_unc_min,
             area_unc_plus,
@@ -1323,6 +1356,86 @@ def fit_all(datapath, stars, sort_idx):
         )
 
 
+def stack_spectra_34(datapath, stars):
+    """
+    Function to stack the optical depth around the 3.4 micron feature
+
+    Parameters
+    ----------
+    datapath : string
+        Path to the data files
+
+    stars : list
+        Star names
+
+    Returns
+    -------
+    Stacked optical depths
+    """
+    tau_list = []
+
+    # create the figure
+    fs = 18
+    fig, ax = plt.subplots()
+
+    for star in stars:
+        # obtain the data
+        data = Table.read(
+            datapath + "NIRCam/v4/" + star + "_F322W2_fullSED.dat",
+            format="ascii",
+            data_start=1,
+        )
+        data["col1"].name = "wavelength"
+        data["col2"].name = "flux"
+        data["col3"].name = "unc"
+        waves = data["wavelength"]
+
+        # mask out the stellar and HI lines)
+        stellar_mask = (
+            ((waves > 3.076) & (waves <= 3.105))
+            | ((waves > 3.590) & (waves <= 3.596))
+            | ((waves > 3.673) & (waves <= 3.687))
+            | ((waves > 3.027) & (waves <= 3.055))
+            | ((waves > 3.280) & (waves <= 3.308))
+            | ((waves > 3.697) & (waves <= 3.710))
+            | ((waves > 3.725) & (waves <= 3.757))
+        )
+        # stellar lines per star
+        # 3.076-3.105; 3.081-3.096; 3.076-3.097; 3.079-3.097; 3.076-3.097
+        # 3.590-3.595; 3.590-3.596
+        # 3.674-3.684; 3.673-3.687; 3.673-3.686
+        # 3.757-3.758?
+        # "dips" per star
+        # 3.032-3.044; 3.031-3.047; 3.031-3.043; 3.028-3.055; 3.032-3.045; 3.027-3.047; 3.032-3.044; 3.030-3.045; 3.029-3.047
+        # 3.287-3.303; 3.280-3.307; 3.282-3.303; 3.282-3.308; 3.282-3.304; 3.289-3.304; 3.284-3.304; 3.282-3.303; 3.282-3.308
+        # 3.697-3.709; 3.700-3.709; 3.700-3.709; 3.700-3.710; 3.698-3.709; 3.700-3.709
+        # 3.728-3.753; 3.734-3.750; 3.725-3.757; 3.733-3.750; 3.734-3.748; 3.734-3.750
+
+        # rebin the spectrum, and select the relevant region
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (3.3, 3.55), 400)
+
+        # define masks for the continuum fitting
+        feat_reg_mask = (waves > 3.35) & (waves <= 3.5)
+        cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
+
+        # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+        taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
+        tau_list.append(taus)
+        plt.savefig(datapath + star + "_34_cont.pdf", bbox_inches="tight")
+
+        # plot the optical depths
+        ax.plot(waves, taus)
+
+    # stack all optical depths
+    summed_taus = np.sum(tau_list, axis=0)
+    ax.plot(waves, summed_taus, c="k")
+
+    # finalize and save the figure
+    ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
+    ax.set_ylabel(r"$\tau(\lambda)$", fontsize=fs)
+    fig.savefig(datapath + "all_34.pdf", bbox_inches="tight")
+
+
 def main():
     # plotting settings for uniform plots
     fs = 18
@@ -1348,8 +1461,8 @@ def main():
     # sort the stars by silicate feature strength by giving them an index. 0=weakest feature.
     sort_idx = [
         3,
-        5,
         4,
+        5,
         7,
         0,
         6,
@@ -1371,10 +1484,13 @@ def main():
     # plt.show()
 
     # fit and plot all features for all stars
-    fit_all(datapath, stars, sort_idx)
+    # fit_all(datapath, stars, sort_idx)
 
     # fit the feature for some dust grain models
-    fit_grain_mod(datapath)
+    # fit_grain_mod(datapath)
+
+    # stack the spectra around 3.4 micron
+    stack_spectra_34(datapath, stars)
 
 
 if __name__ == "__main__":
