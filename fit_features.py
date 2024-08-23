@@ -1412,16 +1412,24 @@ def stack_spectra_34(datapath, stars):
         # 3.728-3.753; 3.734-3.750; 3.725-3.757; 3.733-3.750; 3.734-3.748; 3.734-3.750
 
         # rebin the spectrum, and select the relevant region
-        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (3.3, 3.55), 400)
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (3.32, 3.63), 400)
 
         # define masks for the continuum fitting
-        feat_reg_mask = (waves > 3.35) & (waves <= 3.5)
+        feat_reg_mask = (waves > 3.35) & (waves <= 3.61)
+        # feature region per star:
+        # 3.32-3.52; 3.39-3.47; 3.37-3.61; 3.34-3.63; 3.73-3.5; 3.35-3.52; 3.34-3.63; 3.32-3.63; 3.32-3.63
+
         cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
 
         # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
         taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
         tau_list.append(taus)
-        plt.savefig(datapath + star + "_34_cont.pdf", bbox_inches="tight")
+
+        # rename the previous version of the plot
+        outname = datapath + star + "_34_cont.pdf"
+        if os.path.isfile(outname):
+            os.rename(outname, outname.split(".")[0] + "_0.pdf")
+        plt.savefig(outname, bbox_inches="tight")
 
         # plot the optical depths
         ax.plot(waves, taus)
@@ -1433,7 +1441,11 @@ def stack_spectra_34(datapath, stars):
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
     ax.set_ylabel(r"$\tau(\lambda)$", fontsize=fs)
-    fig.savefig(datapath + "all_34.pdf", bbox_inches="tight")
+    # rename the previous version of the plot
+    outname = datapath + "all_34.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+    fig.savefig(outname, bbox_inches="tight")
 
 
 def main():
