@@ -1368,22 +1368,13 @@ def main():
     outpath = "/Users/mdecleir/Documents/MEAD/Plots/"
 
     # obtain the extinction properties
-    ext_table = Table.read(
-        litpath + "Gordon+2009_tab2.dat",
-        format="ascii",
-    )
+    ext_table = Table.read(litpath + "Gordon+2009_tab2.dat", format="ascii")
 
     # obtain the FM90 parameters
-    fm90_table = Table.read(
-        litpath + "Gordon+2009_tab3.dat",
-        format="ascii",
-    )
+    fm90_table = Table.read(litpath + "Gordon+2009_tab3.dat", format="ascii")
 
     # obtain the hydrogen measurements
-    hyd_table = Table.read(
-        litpath + "VanDePutte+2023_tab2.dat",
-        format="ascii",
-    )
+    hyd_table = Table.read(litpath + "VanDePutte+2023_tab2.dat", format="ascii")
 
     # obtain the depletion measurements
     dep_table = Table.read(
