@@ -1375,7 +1375,7 @@ def stack_spectra_34(datapath, stars, ext_table):
 
     Returns
     -------
-    Stacked optical depths
+    Plot with all optical depths, average optical depths and standard error of the mean optical depths
     """
     # create an empty list to store the optical depths
     tau_list = []
@@ -1396,16 +1396,8 @@ def stack_spectra_34(datapath, stars, ext_table):
         data["col3"].name = "unc"
         waves = data["wavelength"]
 
-        # mask out the stellar and HI lines)
-        stellar_mask = (
-            ((waves > 3.076) & (waves <= 3.105))
-            | ((waves > 3.590) & (waves <= 3.596))
-            | ((waves > 3.673) & (waves <= 3.687))
-            | ((waves > 3.027) & (waves <= 3.055))
-            | ((waves > 3.280) & (waves <= 3.308))
-            | ((waves > 3.697) & (waves <= 3.710))
-            | ((waves > 3.725) & (waves <= 3.757))
-        )
+        # mask out the stellar and HI lines
+        stellar_mask = (waves > 3.590) & (waves <= 3.596)
         # stellar lines per star
         # 3.076-3.105; 3.081-3.096; 3.076-3.097; 3.079-3.097; 3.076-3.097
         # 3.590-3.595; 3.590-3.596
@@ -1468,6 +1460,109 @@ def stack_spectra_34(datapath, stars, ext_table):
     fig.savefig(outname, bbox_inches="tight")
 
 
+def stack_spectra_62(datapath, stars, ext_table, bad_stars):
+    """
+    Function to stack the optical depth around the 6.2 micron feature
+
+    Parameters
+    ----------
+    datapath : string
+        Path to the data files
+
+    stars : list
+        Star names
+
+    ext_table : astropy Table
+        Extinction properties
+
+    bad_stars : list
+        Stars that should not be used in the average
+
+    Returns
+    -------
+    Plot with all optical depths, average optical depths and standard error of the mean optical depths
+    """
+    # create an empty list to store the optical depths
+    tau_list = []
+
+    # create the figure
+    fs = 18
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    for star in stars:
+        if star in bad_stars:
+            continue
+
+        # obtain the data
+        starname = "hd" + star.split("D")[1].strip("0")
+        data = Table.read(datapath + "MIRI/v3/" + starname + "_nircam_mrs_merged.fits")
+        waves = data["wavelength"]
+
+        # mask out the stellar and HI lines
+        stellar_mask = (waves > 5.886) & (waves <= 5.922)
+
+        # stellar lines and dips per star
+        # 5.896-5.918; 5.886-5.922; 5.903-5.911
+        # 6.018-6.032
+        # 6.455-6.472
+        # 6.762-6.783
+        # 6.925-6.970; 6.923-6.956; 6.928-6.956; 6.943-6.951; 6.921-6.975; 6.938-6.956
+        # 7.431-7.523; 7.449-7.472; 7.431-7.482; 7.434-7.488; 7.453-7.467; 7.422-7.526; 7.428-7.480
+        # 7.491-7.542; 7.482-7.557; 7.488-7.527; 7.486-7.515; 7.489-7.515
+        # 8.734-8.800
+        # 5.105-5.149
+
+        # rebin the spectrum, and select the relevant region
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (5.97, 6.41), 400)
+
+        # define masks for the continuum fitting
+        feat_reg_mask = (waves > 6) & (waves <= 6.39)
+        # feature region per star:
+        # 6.14-6.39; 6.15-6.29; 5.94-6.41; 5.97-6.42; 5.99-6.36
+        cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
+
+        # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+        taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
+
+        # rename the previous version of the plot
+        outname = datapath + star + "_62_cont.pdf"
+        if os.path.isfile(outname):
+            os.rename(outname, outname.split(".")[0] + "_0.pdf")
+        plt.savefig(outname, bbox_inches="tight")
+
+        # obtain A(V), and normalize the optical depths
+        tab_mask = ext_table["Name"] == star
+        tau_list.append(taus / ext_table["AV"][tab_mask])
+
+        # plot the normalized optical depths
+        ax.plot(waves, taus / ext_table["AV"][tab_mask], lw=1, alpha=0.6)
+
+    # average the normalized optical depths
+    ave_taus = np.mean(tau_list, axis=0)
+    ax.plot(waves, ave_taus, c="k", lw=3, label="mean")
+
+    # calculate the uncertainties on the mean optical depths
+    # standard error of the mean
+    ave_uncs = scipy.stats.sem(tau_list, axis=0)
+    ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
+
+    # find the peak value and its uncertainty
+    max_ind = np.argmax(ave_taus)
+    print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
+
+    # finalize and save the figure
+    ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
+    ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+    ax.axhline(c="k", ls=":", alpha=0.5)
+
+    # rename the previous version of the plot
+    outname = datapath + "62_all.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+    ax.legend(fontsize=0.8 * fs)
+    fig.savefig(outname, bbox_inches="tight")
+
+
 def main():
     # plotting settings for uniform plots
     fs = 18
@@ -1489,6 +1584,9 @@ def main():
         "HD207198",
         "HD216898",
     ]
+
+    # define the stars that have noisy MIRI spectra
+    bad_stars = ["HD014434", "HD038087"]
 
     # sort the stars by silicate feature strength by giving them an index. 0=weakest feature.
     sort_idx = [
@@ -1529,6 +1627,9 @@ def main():
 
     # stack the spectra around 3.4 micron
     stack_spectra_34(datapath, stars, ext_table)
+
+    # stack the spectra around 6.2 micron
+    stack_spectra_62(datapath, stars, ext_table, bad_stars)
 
 
 if __name__ == "__main__":
