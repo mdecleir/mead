@@ -4,6 +4,7 @@
 import astropy.units as u
 import numpy as np
 import os
+import scipy
 
 from astropy.modeling.fitting import (
     FittingWithOutlierRemoval,
@@ -1444,7 +1445,16 @@ def stack_spectra_34(datapath, stars, ext_table):
 
     # average the normalized optical depths
     ave_taus = np.mean(tau_list, axis=0)
-    ax.plot(waves, ave_taus, c="k", lw=3)
+    ax.plot(waves, ave_taus, c="k", lw=3, label="mean")
+
+    # calculate the uncertainties on the mean optical depths
+    # standard error of the mean
+    ave_uncs = scipy.stats.sem(tau_list, axis=0)
+    ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
+
+    # find the peak value and its uncertainty
+    max_ind = np.argmax(ave_taus)
+    print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
 
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
@@ -1454,6 +1464,7 @@ def stack_spectra_34(datapath, stars, ext_table):
     outname = datapath + "34_all.pdf"
     if os.path.isfile(outname):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
+    ax.legend(fontsize=0.8 * fs)
     fig.savefig(outname, bbox_inches="tight")
 
 
