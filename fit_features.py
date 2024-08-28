@@ -134,7 +134,7 @@ def rebin_constres(data, waverange, resolution):
     return (new_waves, new_fluxes, new_uncs)
 
 
-def fit_cont(waves, fluxes, cont_mask, mod=False):
+def fit_cont(waves, fluxes, cont_mask, bad_mask, mod=False):
     """
     Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
 
@@ -224,7 +224,13 @@ def fit_cont(waves, fluxes, cont_mask, mod=False):
     taus = np.log(1 / norm_fluxes)
 
     # plot the optical depth
-    axes[1].plot(waves, taus, c="k", alpha=0.9)
+    plot_taus = np.copy(taus)
+    plot_taus[bad_mask] = np.nan
+    axes[1].plot(waves, plot_taus, c="k", alpha=0.9)
+
+    # plot the extra feature in grey
+    axes[1].plot(waves[bad_mask], taus[bad_mask], c="k", alpha=0.3)
+
     axes[1].set_xlabel(r"wavelength ($\mu$m)", fontsize=fs)
     axes[1].set_ylabel("optical depth", fontsize=fs)
     axes[1].axhline(ls=":", c="k")
@@ -802,17 +808,14 @@ def fit_10(datapath, star, profile):
     # 11.285-11.321, 11.266-11.314, 11.251-11.373, 11.296-11.314
     # 12.352-12.424, 12.355-12.384, 12.312-12.429, 12.357-12.415, 12.312-12.445, 12.354-12.402, 12.355-12.381
 
-    # mask the suspicious data between 11 and 12 micron
-    bad_mask = (waves > 11.15) & (waves <= 12.1)
-    # mask per star
-    # 11.541-11.947, 11.462-12.013, 11.339-12.080, 11.355-12.096
-
     # rebin the spectrum, and select the relevant region
-    waves, fluxes, uncs = rebin_constres(
-        data[(~stellar_mask) & (~bad_mask)], (7.9, 12.8), 400
-    )
+    waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (7.9, 12.8), 400)
 
     # define masks for the continuum fitting
+    # mask the extra feature between 11 and 12 micron
+    bad_mask = (waves > 11.1) & (waves <= 12.1)
+    # mask per star
+    # 11.541-11.947, 11.462-12.013, 11.339-12.080, 11.355-12.096
     feat_reg_mask = (waves > 8.1) & (waves <= 12.6)
     # feature region per star:
     # 8.46-12.3, 8.1-12.19, 8.34-12.18, 8.47-12.1, 8.13-12.21, 8.08-12.11, 8.15-12.22, 8.20-12.33
@@ -820,10 +823,10 @@ def fit_10(datapath, star, profile):
     cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
 
     # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
-    taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
+    taus, unc, axes = fit_cont(waves, fluxes, cont_mask, bad_mask)
 
     # define the mask for the feature fitting
-    feat_fit_mask = feat_reg_mask & ~np.isnan(taus)
+    feat_fit_mask = feat_reg_mask & ~np.isnan(taus) & ~bad_mask
 
     # define the uncertainties
     emp_uncs = np.full(len(taus[feat_fit_mask]), unc)
@@ -885,7 +888,7 @@ def fit_10(datapath, star, profile):
         "10",
     )
 
-    return waves, taus, fit_result_feat_emcee, chains, chi2
+    return waves, taus, fit_result_feat_emcee, chains, chi2, bad_mask
 
 
 def fit_grain_mod(datapath):
@@ -920,7 +923,7 @@ def fit_grain_mod(datapath):
     )
 
     # mask the suspicious data between 11 and 12 micron
-    bad_mask = (waves > 11.15) & (waves <= 12.1)
+    bad_mask = (waves > 11.1) & (waves <= 12.1)
 
     # define the feature mask
     feat_reg_mask = (waves > 8.1) & (waves <= 12.6)
@@ -960,7 +963,7 @@ def fit_grain_mod(datapath):
         cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
 
         # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
-        taus, unc, axes = fit_cont(waves, fluxes, cont_mask, mod=True)
+        taus, unc, axes = fit_cont(waves, fluxes, cont_mask, bad_mask, mod=True)
 
         # define the mask for the feature fitting
         feat_fit_mask = feat_reg_mask & ~np.isnan(taus)
@@ -1137,7 +1140,9 @@ def fit_all(datapath, stars, sort_idx):
         for i, star in enumerate(stars):
             print(star)
             func = eval("fit_" + feat_name)
-            waves, taus, fit_result, chains, chi2 = func(datapath, star, profile)
+            waves, taus, fit_result, chains, chi2, bad_mask = func(
+                datapath, star, profile
+            )
             print(fit_result, chi2)
 
             # obtain the results
@@ -1319,8 +1324,16 @@ def fit_all(datapath, stars, sort_idx):
             table_txt.add_row((star, *result_list, chi2))
             table_tex.add_row((star, *tex_list))
 
-            # plot the feature and fitted profile
-            ax.plot(waves, taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
+            # plot the feature
+            plot_taus = np.copy(taus)
+            plot_taus[bad_mask] = np.nan
+            ax.plot(waves, plot_taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
+
+            # plot the extra feature in grey
+            ax.plot(
+                waves[bad_mask], taus[bad_mask] + sort_idx[i] * 0.07, c="k", alpha=0.3
+            )
+            # plot the fitted profile
             ax.plot(waves, fit_result(waves) + sort_idx[i] * 0.07, c="crimson", lw=2)
             ax.annotate(
                 star,
@@ -1617,7 +1630,7 @@ def main():
     # fit_all(datapath, stars, sort_idx)
 
     # fit the feature for some dust grain models
-    # fit_grain_mod(datapath)
+    fit_grain_mod(datapath)
 
     # obtain the extinction properties
     ext_table = Table.read(
@@ -1626,10 +1639,10 @@ def main():
     )
 
     # stack the spectra around 3.4 micron
-    stack_spectra_34(datapath, stars, ext_table)
+    # stack_spectra_34(datapath, stars, ext_table)
 
     # stack the spectra around 6.2 micron
-    stack_spectra_62(datapath, stars, ext_table, bad_stars)
+    # stack_spectra_62(datapath, stars, ext_table, bad_stars)
 
 
 if __name__ == "__main__":
