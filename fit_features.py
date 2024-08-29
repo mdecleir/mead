@@ -1611,9 +1611,6 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     for star in stars:
-        # exclude stars from the average
-        if star in exclude:
-            continue
 
         # obtain the data
         data = Table.read(
@@ -1661,6 +1658,24 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
 
         # obtain A(V), and normalize the optical depths
         tab_mask = ext_table["Name"] == star
+
+        # exclude star from the average, and plot it separately
+        if star in exclude:
+            fig2, ax2 = plt.subplots(figsize=(6, 6))
+            ax2.plot(waves, taus / ext_table["AV"][tab_mask], c="k")
+            ax2.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
+            ax2.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+            print(
+                star,
+                "peak: ",
+                np.nanmax(taus / ext_table["AV"][tab_mask]),
+                " +- ",
+                unc / ext_table["AV"][tab_mask].value,
+            )
+            fig2.savefig(datapath + star + "_30.pdf", bbox_inches="tight")
+            continue
+
+        # add the normalized optical depth to the list
         tau_list.append(taus / ext_table["AV"][tab_mask])
 
         # plot the normalized optical depths
@@ -1678,7 +1693,6 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
     # find the peak value and its uncertainty
     max_ind = np.nanargmax(ave_taus)
     print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
-    print("Peak: ", ave_taus[max_ind] / ave_uncs[max_ind])
 
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
