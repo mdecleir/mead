@@ -1356,6 +1356,33 @@ def plot_feat_norm_dcol(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
+def calc_ave(data):
+    """
+    Function to calculate and print out some median values
+
+    Parameters
+    ----------
+    data : astropy Table
+        Data for which to calculate medians
+
+    Returns
+    -------
+    Median values of relevant parameters
+    """
+    print("Median lambda_0: ", np.median(data["x_0(micron)"]))
+    print("Median tau: ", np.median(data["tau"]))
+    print(
+        "Median and standard deviation FWHM: ",
+        np.median(data["FWHM(micron)"]),
+        np.std(data["FWHM(micron)"]),
+    )
+    print("Median area: ", np.median(data["area(micron)"]))
+    print("Median alpha: ", np.median(data["shape"]))
+
+    print("Median tau/AV: ", np.median(data["tau/AV"]))
+    print("Median AV/tau: ", np.median(1 / data["tau/AV"]))
+
+
 def main():
     # plotting settings for uniform plots
     # fs = 20
@@ -1480,6 +1507,9 @@ def main():
 
     # plot the feature properties against each other
     plot_feat(outpath, "10", joined_all_10, bad_mask)
+
+    # calculate average silicate feature properties
+    calc_ave(joined_all_10)
 
     # plot silicate properties with literature data added
     plot_sil_lit(outpath, joined_all_10, bad_mask, g21_table)
