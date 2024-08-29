@@ -134,7 +134,7 @@ def rebin_constres(data, waverange, resolution):
     return (new_waves, new_fluxes, new_uncs)
 
 
-def fit_cont(waves, fluxes, cont_mask, bad_mask, mod=False):
+def fit_cont(waves, fluxes, cont_mask, bad_mask=None, mod=False):
     """
     Function to fit the continuum, plot the continuum fit, normalize the spectrum, covert the normalized flux to optical depth, plot the optical depth, and calculate the empirical uncertainty on the optical depth
 
@@ -148,6 +148,9 @@ def fit_cont(waves, fluxes, cont_mask, bad_mask, mod=False):
 
     cont_mask : numpy.ndarray
         Mask for data to use in the continuum fitting
+
+    bad_mask : numpy.ndarray [default=None]
+        Boolean mask for region to be plotted in gray
 
     Returns
     -------
@@ -224,6 +227,8 @@ def fit_cont(waves, fluxes, cont_mask, bad_mask, mod=False):
     taus = np.log(1 / norm_fluxes)
 
     # plot the optical depth
+    if bad_mask is None:
+        bad_mask = np.full(len(taus), False, dtype=bool)
     plot_taus = np.copy(taus)
     plot_taus[bad_mask] = np.nan
     axes[1].plot(waves, plot_taus, c="k", alpha=0.9)
@@ -1576,6 +1581,117 @@ def stack_spectra_62(datapath, stars, ext_table, bad_stars):
     fig.savefig(outname, bbox_inches="tight")
 
 
+def stack_spectra_30(datapath, stars, ext_table, exclude):
+    """
+    Function to stack the optical depth around the 3.0 micron feature
+
+    Parameters
+    ----------
+    datapath : string
+        Path to the data files
+
+    stars : list
+        Star names
+
+    ext_table : astropy Table
+        Extinction properties
+
+    exclude : list
+        Stars to exclude from the average
+
+    Returns
+    -------
+    Plot with all optical depths, average optical depths and standard error of the mean optical depths
+    """
+    # create an empty list to store the optical depths
+    tau_list = []
+
+    # create the figure
+    fs = 18
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    for star in stars:
+        # exclude stars from the average
+        if star in exclude:
+            continue
+
+        # obtain the data
+        data = Table.read(
+            datapath + "NIRCam/v4/" + star + "_F322W2_fullSED.dat",
+            format="ascii",
+            data_start=1,
+        )
+        data["col1"].name = "wavelength"
+        data["col2"].name = "flux"
+        data["col3"].name = "unc"
+        waves = data["wavelength"]
+
+        # mask out the stellar and HI lines
+        stellar_mask = (
+            (waves > 2.738) & (waves <= 2.778)
+            | (waves > 2.852) & (waves <= 2.893)
+            | (waves > 3.027) & (waves <= 3.055)
+            | ((waves > 3.074) & (waves <= 3.099))
+            | ((waves > 3.278) & (waves <= 3.309))
+        )
+        # stellar lines per star
+        # 2.743-2.778; 2.738-2.776; 2.748-2.763; 2.748-2.771; 2.745-2.767; 2.746-2.767; 2.748-2.767
+        # 2.865-2.882; 2.852-2.893; 2.864-2.881; 2.852-2.887; 2.858-2.887; 2.865-2.881; 2.858-2.887; 2.862-2.882
+        # 3.031-3.044; 3.027-3.047; 3.027-3.055; 3.031-3.046; 3.027-3.047; 3.027-3.046; 3.031-3.045; 3.027-3.052; 3.031-3.045
+        # 3.076-3.106; 3.076-3.086; 3.076-3.096; 3.074-3.098; 3.076-3.097; 3.076-3.097; 3.081-3.098; 3.076-3.096
+        # 3.285-3.308; 3.278-3.308; 3.278-3.308; 3.282-3.308; 3.281-3.308; 3.283-3.304; 3.289-3.304; 3.282-3.309
+        # from stellar model:
+        # 2.735-2.781; 2.846-2.897; 3.013-3.060; 3.072-3.091; 3.274-3.323
+
+        # rebin the spectrum, and select the relevant region
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (2.77, 3.29), 400)
+
+        # define masks for the continuum fitting
+        feat_reg_mask = (waves > 2.8) & (waves <= 3.26)
+        cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
+
+        # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+        taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
+
+        # rename the previous version of the plot
+        outname = datapath + star + "_30_cont.pdf"
+        if os.path.isfile(outname):
+            os.rename(outname, outname.split(".")[0] + "_0.pdf")
+        plt.savefig(outname, bbox_inches="tight")
+
+        # obtain A(V), and normalize the optical depths
+        tab_mask = ext_table["Name"] == star
+        tau_list.append(taus / ext_table["AV"][tab_mask])
+
+        # plot the normalized optical depths
+        ax.plot(waves, taus / ext_table["AV"][tab_mask], lw=1, alpha=0.6)
+
+    # average the normalized optical depths
+    ave_taus = np.mean(tau_list, axis=0)
+    ax.plot(waves, ave_taus, c="k", lw=3, label="mean")
+
+    # calculate the uncertainties on the mean optical depths
+    # standard error of the mean
+    ave_uncs = scipy.stats.sem(tau_list, axis=0)
+    ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
+
+    # find the peak value and its uncertainty
+    max_ind = np.nanargmax(ave_taus)
+    print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
+    print("Peak: ", ave_taus[max_ind] / ave_uncs[max_ind])
+
+    # finalize and save the figure
+    ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
+    ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+    ax.axhline(c="k", ls=":", alpha=0.5)
+    # rename the previous version of the plot
+    outname = datapath + "30_all.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+    ax.legend(fontsize=0.8 * fs)
+    fig.savefig(outname, bbox_inches="tight")
+
+
 def main():
     # plotting settings for uniform plots
     fs = 18
@@ -1615,22 +1731,19 @@ def main():
     ]
 
     # obtain and plot a stellar model
-    stel_mod = Table.read(datapath + "MIRI/tlusty_z100t25000g400v2_miri_ifu.fits")
-    stel_mod = Table.read(datapath + "MIRI/tlusty_z100t23000g400v2_nircam_ss.fits")
+    # stel_mod = Table.read(datapath + "MIRI/tlusty_z100t25000g400v2_miri_ifu.fits")
+    # stel_mod = Table.read(datapath + "MIRI/tlusty_z100t23000g400v2_nircam_ss.fits")
     # plt.plot(
     #     stel_mod["WAVELENGTH"] * 1e-4,
     #     stel_mod["FLUX"] * (stel_mod["WAVELENGTH"] * 1e-4) ** 4,
     # )
-    # plt.xlim(5.6, 6.1)
-    # plt.xlim(7, 14)
-    # plt.ylim(3.2e6, 3.4e6)
     # plt.show()
 
     # fit and plot all features for all stars
     # fit_all(datapath, stars, sort_idx)
 
     # fit the feature for some dust grain models
-    fit_grain_mod(datapath)
+    # fit_grain_mod(datapath)
 
     # obtain the extinction properties
     ext_table = Table.read(
@@ -1643,6 +1756,12 @@ def main():
 
     # stack the spectra around 6.2 micron
     # stack_spectra_62(datapath, stars, ext_table, bad_stars)
+
+    # define stars to be excluded from the stack
+    exclude = ["HD073882"]
+
+    # stack the spectra around 3.0 micron
+    stack_spectra_30(datapath, stars, ext_table, exclude)
 
 
 if __name__ == "__main__":
