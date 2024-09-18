@@ -363,7 +363,7 @@ def fit_feature(
     emcee_samples_file = (
         outpath + "Fitting_results/" + star + "_chains_" + feat_name + ".h5"
     )
-    nsteps = 5000
+    nsteps = 10000
     burn = 0.1
     emcee_fitter = EmceeFitter(
         nsteps=nsteps, burnfrac=burn, save_samples=emcee_samples_file
@@ -1389,25 +1389,43 @@ def fit_all(datapath, stars, sort_idx):
             # plot the feature
             plot_taus = np.copy(taus)
             plot_taus[bad_mask] = np.nan
-            ax.plot(waves, plot_taus + sort_idx[i] * 0.07, c="k", alpha=0.9)
+            handle1 = ax.plot(
+                waves, plot_taus + sort_idx[i] * 0.07, c="k", alpha=0.9, label="data"
+            )
 
             # plot the extra feature in grey
             ax.plot(
                 waves[bad_mask], taus[bad_mask] + sort_idx[i] * 0.07, c="k", alpha=0.3
             )
             # plot the fitted profile
-            ax.plot(waves, fit_result(waves) + sort_idx[i] * 0.07, c="crimson", lw=2)
+            handle2 = ax.plot(
+                waves,
+                fit_result(waves) + sort_idx[i] * 0.07,
+                c="crimson",
+                lw=2,
+                label="fit",
+            )
+
+            # add the star name
             ax.annotate(
                 star,
-                (waves[0] - 0.15, fit_result(waves[0]) + sort_idx[i] * 0.07 + 0.015),
+                (waves[0] - 0.38, fit_result(waves[0]) + sort_idx[i] * 0.07),
                 fontsize=16,
+                rotation=30,
             )
 
         # finalize and save the figure
         fs = 20
         ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
         ax.set_ylabel(r"$\tau$($\lambda$) + offset", fontsize=fs)
-        ax.set_ylim(-0.05, None)
+        ax.set_ylim(-0.045, 0.7)
+        ax.set_xlim(7.4, 13)
+        fig.legend(
+            handles=[handle1[0], handle2[0]],
+            bbox_to_anchor=(0.88, 0.88),
+            fontsize=0.8 * fs,
+        )
+
         outname = datapath + feat_name + "_all.pdf"
         # rename the previous version of the plot
         if os.path.isfile(outname):
@@ -1858,8 +1876,8 @@ def main():
     # sort the stars by silicate feature strength by giving them an index. 0=weakest feature.
     sort_idx = [
         3,
-        4,
         5,
+        4,
         7,
         0,
         6,
@@ -1878,7 +1896,7 @@ def main():
     # plt.show()
 
     # fit and plot all features for all stars
-    # fit_all(datapath, stars, sort_idx)
+    fit_all(datapath, stars, sort_idx)
 
     # fit the feature for some dust grain models
     # fit_grain_mod(datapath)
@@ -1890,10 +1908,10 @@ def main():
     )
 
     # stack the spectra around 3.4 micron
-    stack_spectra_34(datapath, stars, ext_table)
+    # stack_spectra_34(datapath, stars, ext_table)
     #
     # # stack the spectra around 6.2 micron
-    stack_spectra_62(datapath, stars, ext_table, bad_stars)
+    # stack_spectra_62(datapath, stars, ext_table, bad_stars)
 
     # define stars to be excluded from the stack
     # exclude = ["HD073882"]
