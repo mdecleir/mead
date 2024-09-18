@@ -50,6 +50,63 @@ def gauss_skew_func(x, amplitude=0.1, loc=9, scale=1, shape=2):
     return amplitude * stats.skewnorm.pdf(x, shape, loc=loc, scale=scale)
 
 
+def multi_gauss_model(amplitudes, means, stddevs):
+    """
+    Function to create an Astropy model with the sum of multiple Gaussians
+
+    Parameters
+    ----------
+    amplitudes : np.ndarray
+        Amplitudes of the Gaussians
+
+    means : np.ndarray
+        Central wavelengths of the Gaussians
+
+    stddev : np.ndarray
+        Standard deviations of the Gaussians
+
+    Returns
+    -------
+    Astropy CompoundModel with the sum of the Gaussians
+    """
+    # create the first Gaussian
+    model_sum = Gaussian1D(
+        amplitude=amplitudes[0],
+        mean=means[0],
+        stddev=stddevs[0],
+        fixed={"mean": True, "stddev": True},
+    )
+    # add the rest of the Gaussians
+    for i in range(1, len(amplitudes)):
+        model_sum += Gaussian1D(
+            amplitude=amplitudes[i],
+            mean=means[i],
+            stddev=stddevs[i],
+            fixed={"mean": True, "stddev": True},
+        )
+
+    return model_sum
+
+
+def fwhm_to_stddev(fwhm):
+    """
+    Function to convert the FWHM of a Gaussian to the standard deviation
+    Gaussian1D model stddev: FWHM = 2 * stddev * sqrt(2 * ln(2))
+    stddev = FWHM / 2 / sqrt(2 * ln(2))
+
+    Parameters
+    ----------
+    fwhm : float
+        FWHM of the Gaussian
+
+    Returns
+    -------
+    stddev : float
+        standard deviation of the Gaussian
+    """
+    return fwhm / 2 / np.sqrt(2 * np.log(2))
+
+
 def _wavegrid(waverange, resolution):
     """
     Function to define a wavelength grid with a specified resolution between
@@ -1434,7 +1491,6 @@ def stack_spectra_34(datapath, stars, ext_table):
         feat_reg_mask = (waves > 3.35) & (waves <= 3.61)
         # feature region per star:
         # 3.32-3.52; 3.39-3.47; 3.37-3.61; 3.34-3.63; 3.73-3.5; 3.35-3.52; 3.34-3.63; 3.32-3.63; 3.32-3.63
-
         cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
 
         # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
@@ -1462,9 +1518,25 @@ def stack_spectra_34(datapath, stars, ext_table):
     ave_uncs = scipy.stats.sem(tau_list, axis=0)
     ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
 
+    # create a model with 5 Gaussians, based on the wavelengths and FWHMs from Chiar+2013, table 1
+    model_profile = multi_gauss_model(
+        np.array([0.139, 0.156, 0.121, 0.0696, 0.0454]),
+        np.array([3.376, 3.420, 3.474, 3.520, 3.289]),
+        fwhm_to_stddev(np.array([0.05, 0.05, 0.05, 0.05, 0.09])),
+    )
+
+    # plot the Chiar model
+    ax.plot(waves, model_profile(waves) / 29, color="k", ls=":")
+
     # find the peak value and its uncertainty
     max_ind = np.argmax(ave_taus)
     print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
+    print(
+        "Peak: ",
+        1 / ave_taus[max_ind],
+        1 / ave_taus[max_ind] - 1 / (ave_taus[max_ind] + ave_uncs[max_ind]),
+        1 / (ave_taus[max_ind] - ave_uncs[max_ind]) - 1 / ave_taus[max_ind],
+    )
 
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
@@ -1564,9 +1636,25 @@ def stack_spectra_62(datapath, stars, ext_table, bad_stars):
     ave_uncs = scipy.stats.sem(tau_list, axis=0)
     ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
 
+    # create a model with 2 Gaussians, based on the wavelengths and FWHMs from Chiar+2013, table 1
+    model_profile = multi_gauss_model(
+        np.array([0.15, 0.056]),
+        np.array([6.19, 6.25]),
+        fwhm_to_stddev(np.array([0.06, 0.16])),
+    )
+
+    # plot the Chiar model
+    ax.plot(waves, model_profile(waves) / 29, color="k", ls=":")
+
     # find the peak value and its uncertainty
     max_ind = np.argmax(ave_taus)
     print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
+    print(
+        "Peak: ",
+        1 / ave_taus[max_ind],
+        1 / ave_taus[max_ind] - 1 / (ave_taus[max_ind] + ave_uncs[max_ind]),
+        1 / (ave_taus[max_ind] - ave_uncs[max_ind]) - 1 / ave_taus[max_ind],
+    )
 
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
@@ -1611,7 +1699,6 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
     fig, ax = plt.subplots(figsize=(6, 6))
 
     for star in stars:
-
         # obtain the data
         data = Table.read(
             datapath + "NIRCam/v4/" + star + "_F322W2_fullSED.dat",
@@ -1677,9 +1764,11 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
 
         # add the normalized optical depth to the list
         tau_list.append(taus / ext_table["AV"][tab_mask])
+        # tau_list.append(taus)
 
         # plot the normalized optical depths
         ax.plot(waves, taus / ext_table["AV"][tab_mask], lw=1, alpha=0.6)
+    # ax.plot(waves, taus, lw=1, alpha=0.6)
 
     # average the normalized optical depths
     ave_taus = np.mean(tau_list, axis=0)
@@ -1688,15 +1777,50 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
     # calculate the uncertainties on the mean optical depths
     # standard error of the mean
     ave_uncs = scipy.stats.sem(tau_list, axis=0)
-    ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
+    # ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
 
     # find the peak value and its uncertainty
     max_ind = np.nanargmax(ave_taus)
     print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
 
+    # add the calibration star P330-E
+    # obtain the data
+    data = Table.read(
+        datapath + "NIRCam/p330-e_Jy.dat",
+        format="ascii",
+    )
+    data["col1"].name = "wavelength"
+    data["col2"].name = "flux"
+    waves = data["wavelength"]
+    data["unc"] = 0.05 * data["flux"]
+    stellar_mask = (
+        (waves > 2.738) & (waves <= 2.778)
+        | (waves > 2.852) & (waves <= 2.893)
+        | (waves > 3.027) & (waves <= 3.055)
+        | ((waves > 3.074) & (waves <= 3.099))
+        | ((waves > 3.278) & (waves <= 3.309))
+    )
+    # rebin the spectrum, and select the relevant region
+    waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (2.77, 3.29), 400)
+    # define masks for the continuum fitting
+    feat_reg_mask = (waves > 2.8) & (waves <= 3.26)
+    cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
+    # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
+    taus, unc, axes = fit_cont(waves, fluxes, cont_mask)
+    # rename the previous version of the plot
+    outname = datapath + "P330-E_30_cont.pdf"
+    if os.path.isfile(outname):
+        os.rename(outname, outname.split(".")[0] + "_0.pdf")
+    plt.savefig(outname, bbox_inches="tight")
+    # add to the main figure
+    ax.plot(waves, taus / 0.133, c="blue", zorder=1, label="P330-E")
+    # ax.plot(waves, taus, c="blue", zorder=1, label="P330-E")
+
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
     ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+    # ax.set_ylabel(r"$\tau(\lambda)$", fontsize=fs)
+
     ax.axhline(c="k", ls=":", alpha=0.5)
     # rename the previous version of the plot
     outname = datapath + "30_all.pdf"
@@ -1766,16 +1890,16 @@ def main():
     )
 
     # stack the spectra around 3.4 micron
-    # stack_spectra_34(datapath, stars, ext_table)
-
-    # stack the spectra around 6.2 micron
-    # stack_spectra_62(datapath, stars, ext_table, bad_stars)
+    stack_spectra_34(datapath, stars, ext_table)
+    #
+    # # stack the spectra around 6.2 micron
+    stack_spectra_62(datapath, stars, ext_table, bad_stars)
 
     # define stars to be excluded from the stack
-    exclude = ["HD073882"]
+    # exclude = ["HD073882"]
 
     # stack the spectra around 3.0 micron
-    stack_spectra_30(datapath, stars, ext_table, exclude)
+    # stack_spectra_30(datapath, stars, ext_table, exclude)
 
 
 if __name__ == "__main__":
