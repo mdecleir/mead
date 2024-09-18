@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from fit_features import rebin_constres
 
 
-def plot_spectra(datapath, stars):
+def plot_spectra(datapath, stars, sort_idx):
     """
     Function to plot all spectra
 
@@ -17,6 +17,9 @@ def plot_spectra(datapath, stars):
 
     stars : list
         Star names
+
+    sort_idx : list
+        Index for plotting order
 
     Returns
     -------
@@ -42,19 +45,19 @@ def plot_spectra(datapath, stars):
         fluxes = fluxes / average
 
         # plot the spectra
-        p = plt.plot(waves, fluxes * waves ** 2 + 0.3 * i)
+        p = plt.plot(waves, fluxes * waves ** 2 + 0.2 * sort_idx[i])
 
         # add the star name
         plt.annotate(
             star,
-            (1.8, fluxes[30] * waves[30] ** 2 + 0.3 * i),
+            (1.8, fluxes[30] * waves[30] ** 2 + 0.2 * sort_idx[i]),
             fontsize=fs * 0.8,
             rotation=30,
             color=p[0].get_color(),
         )
 
     # finalize and save the figure
-    plt.ylim(0.8, 3.6)
+    plt.ylim(0.8, 3.2)
     plt.xlabel(r"$\lambda (\mu m)$", fontsize=fs)
     plt.ylabel(r"normalized flux * $\lambda^2 (\mu m^2)$ + offset", fontsize=fs)
     plt.savefig(datapath + "all_spectra.pdf", bbox_inches="tight")
@@ -77,8 +80,11 @@ def main():
         "HD216898",
     ]
 
+    # sort the stars by steepness of their spectra by giving them an index. 0=flattest.
+    sort_idx = [8, 2, 6, 1, 7, 5, 4, 3, 0]
+
     # plot all spectra
-    plot_spectra(datapath, stars)
+    plot_spectra(datapath, stars, sort_idx)
 
 
 if __name__ == "__main__":
