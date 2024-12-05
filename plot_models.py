@@ -7,6 +7,9 @@ from astropy.modeling.models import custom_model
 from matplotlib import pyplot as plt
 from scipy import stats
 
+from astropy.modeling.models import Gaussian1D
+from astropy.table import Table
+
 
 def gauss_skew_func(x, amplitude=0.1, loc=9, scale=1, shape=2):
     return amplitude * stats.skewnorm.pdf(x, shape, loc=loc, scale=scale)
@@ -95,12 +98,101 @@ def plot_modif_gauss():
     plt.savefig("/Users/mdecleir/Documents/MEAD/Extinction/gauss_modified.pdf")
 
 
+def plot_gauss3():
+    waves = np.arange(3.1, 3.6, 0.001)
+    chiar = Table.read(
+        "/Users/mdecleir/Documents/MEAD/Literature_data/gcs3_gaussfit.dat",
+        format="ascii",
+    )
+
+    plt.plot(chiar["micron"], chiar["gauss1"], color="k")
+    g1 = Gaussian1D(
+        amplitude=0.044,
+        mean=3.289,
+        stddev=81.8 * (3.289 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g1(waves), ls=":")
+
+    plt.plot(chiar["micron"], chiar["gauss2"], color="k")
+    g2 = Gaussian1D(
+        amplitude=0.132,
+        mean=3.376,
+        stddev=47.2 * (3.376 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g2(waves), ls=":")
+
+    plt.plot(chiar["micron"], chiar["gauss3"], color="k")
+    g3 = Gaussian1D(
+        amplitude=0.149,
+        mean=3.420,
+        stddev=42.8 * (3.42 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g3(waves), ls=":")
+
+    plt.plot(chiar["micron"], chiar["gauss4"], color="k")
+    g4 = Gaussian1D(
+        amplitude=0.115,
+        mean=3.474,
+        stddev=41 * (3.474 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g4(waves), ls=":")
+
+    plt.plot(chiar["micron"], chiar["gauss5"], color="k")
+    g5 = Gaussian1D(
+        amplitude=0.065,
+        mean=3.52,
+        stddev=40.4 * (3.52 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g5(waves), ls=":")
+
+    plt.show()
+
+
+def plot_gauss6():
+    waves = np.arange(5.9, 6.5, 0.001)
+    chiar = Table.read(
+        "/Users/mdecleir/Documents/MEAD/Literature_data/gcs3_6mu_gaussianfit.dat",
+        format="ascii",
+    )
+
+    plt.plot(chiar["micron"], chiar["olefinicgauss"], color="k")
+    g1 = Gaussian1D(
+        amplitude=0.07,
+        mean=6.19,
+        stddev=15 * (6.19 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g1(waves), ls=":")
+
+    plt.plot(chiar["micron"], chiar["pahgauss"], color="k")
+    g2 = Gaussian1D(
+        amplitude=0.03,
+        mean=6.25,
+        stddev=40 * (6.25 ** 2) / 10 ** 4 / 2 / np.sqrt(2 * np.log(2)),
+        fixed={"mean": True, "stddev": True},
+    )
+    plt.plot(waves, g2(waves), ls=":")
+
+    plt.show()
+
+
 def main():
     # plot skewed Gaussian models
     plot_skew_gauss()
 
     # plot modified Gaussian models
     plot_modif_gauss()
+
+    # plot Gaussian models around 3.4 micron from Chiar+2013
+    plot_gauss3()
+
+    # plot Gaussian models around 6.2 micron from Chiar+2013
+    plot_gauss6()
 
 
 if __name__ == "__main__":
