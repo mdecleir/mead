@@ -1432,6 +1432,18 @@ def fit_all(datapath, stars, sort_idx):
             os.rename(outname, outname.split(".")[0] + "_0.pdf")
         fig.savefig(outname, bbox_inches="tight")
 
+        # add the median values to the latex table
+        table_tex.add_row(
+            [
+                "median",
+                "{:.2f}".format(np.median(table_txt["x_0(micron)"])),
+                "{:.3f}".format(np.median(table_txt["tau"])),
+                "{:.2f}".format(np.median(table_txt["FWHM(micron)"])),
+                "{:.3f}".format(np.median(table_txt["area(micron)"])),
+                "{:.2f}".format(np.median(table_txt["shape"])),
+            ],
+        )
+
         # write the tables to files
         table_txt.write(
             datapath + "fit_results_" + feat_name + "_" + profile + ".txt",
@@ -1445,7 +1457,7 @@ def fit_all(datapath, stars, sort_idx):
             col_align="l|CCCCC",
             latexdict={
                 "tabletype": "deluxetable*",
-                "caption": r"Derived properties of the 10 \micron\ silicate feature, based on the MCMC fitting results. \label{tab:fit_results}",
+                "caption": r"Derived properties of the 10\,\micron\ silicate feature, based on the MCMC fitting results. Median values for this sample are listed in the bottom row. \label{tab:fit_results}",
             },
             overwrite=True,
         )
@@ -1490,7 +1502,8 @@ def stack_spectra_34(datapath, stars, ext_table):
         waves = data["wavelength"]
 
         # mask out the stellar and HI lines
-        stellar_mask = (waves > 3.590) & (waves <= 3.596)
+        stellar_mask = (waves > 3.589) & (waves <= 3.596)
+
         # stellar lines per star
         # 3.076-3.105; 3.081-3.096; 3.076-3.097; 3.079-3.097; 3.076-3.097
         # 3.590-3.595; 3.590-3.596
@@ -1503,10 +1516,11 @@ def stack_spectra_34(datapath, stars, ext_table):
         # 3.728-3.753; 3.734-3.750; 3.725-3.757; 3.733-3.750; 3.734-3.748; 3.734-3.750
 
         # rebin the spectrum, and select the relevant region
-        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (3.32, 3.63), 400)
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (3.31, 3.64), 400)
 
         # define masks for the continuum fitting
-        feat_reg_mask = (waves > 3.35) & (waves <= 3.61)
+        feat_reg_mask = (waves > 3.35) & (waves <= 3.59)
+
         # feature region per star:
         # 3.32-3.52; 3.39-3.47; 3.37-3.61; 3.34-3.63; 3.73-3.5; 3.35-3.52; 3.34-3.63; 3.32-3.63; 3.32-3.63
         cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
@@ -1536,21 +1550,28 @@ def stack_spectra_34(datapath, stars, ext_table):
     ave_uncs = scipy.stats.sem(tau_list, axis=0)
     ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
 
-    # create a model with 5 Gaussians, based on the wavelengths and FWHMs from Chiar+2013, table 1
-    model_profile = multi_gauss_model(
-        np.array([0.139, 0.156, 0.121, 0.0696, 0.0454]),
-        np.array([3.376, 3.420, 3.474, 3.520, 3.289]),
-        fwhm_to_stddev(np.array([0.05, 0.05, 0.05, 0.05, 0.09])),
+    # plot the fitted Chiar+2013 model with 4 Gaussians
+    chiar = Table.read(
+        "/Users/mdecleir/Documents/MEAD/Literature_data/gcs3_gaussfit.dat",
+        format="ascii",
     )
-
-    # plot the Chiar model
-    ax.plot(waves, model_profile(waves) / 29, color="k", ls=":")
+    ax.plot(
+        chiar["micron"],
+        (chiar["gauss2"] + chiar["gauss3"] + chiar["gauss4"] + chiar["gauss5"])
+        / 29
+        / 2.5,
+        color="darkviolet",
+        ls=":",
+        lw=3,
+        label="Quintuplet (C13) / 2.5",
+    )
 
     # find the peak value and its uncertainty
     max_ind = np.argmax(ave_taus)
-    print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
+    print("Peak wavelength:", waves[max_ind])
+    print("Peak tau/AV: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
     print(
-        "Peak: ",
+        "Peak AV/tau: ",
         1 / ave_taus[max_ind],
         1 / ave_taus[max_ind] - 1 / (ave_taus[max_ind] + ave_uncs[max_ind]),
         1 / (ave_taus[max_ind] - ave_uncs[max_ind]) - 1 / ave_taus[max_ind],
@@ -1560,6 +1581,8 @@ def stack_spectra_34(datapath, stars, ext_table):
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
     ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
     ax.axhline(c="k", ls=":", alpha=0.5)
+    ax.set_xlim(3.3, 3.66)
+    ax.set_ylim(-0.004, 0.008)
     # rename the previous version of the plot
     outname = datapath + "34_all.pdf"
     if os.path.isfile(outname):
@@ -1607,24 +1630,18 @@ def stack_spectra_62(datapath, stars, ext_table, bad_stars):
         waves = data["wavelength"]
 
         # mask out the stellar and HI lines
-        stellar_mask = (waves > 5.886) & (waves <= 5.922)
+        stellar_mask = (waves > 6.282) & (waves <= 6.299)
 
-        # stellar lines and dips per star
-        # 5.896-5.918; 5.886-5.922; 5.903-5.911
+        # stellar lines
         # 6.018-6.032
         # 6.455-6.472
-        # 6.762-6.783
-        # 6.925-6.970; 6.923-6.956; 6.928-6.956; 6.943-6.951; 6.921-6.975; 6.938-6.956
-        # 7.431-7.523; 7.449-7.472; 7.431-7.482; 7.434-7.488; 7.453-7.467; 7.422-7.526; 7.428-7.480
-        # 7.491-7.542; 7.482-7.557; 7.488-7.527; 7.486-7.515; 7.489-7.515
-        # 8.734-8.800
-        # 5.105-5.149
 
         # rebin the spectrum, and select the relevant region
-        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (5.97, 6.41), 400)
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (6.06, 6.45), 400)
 
         # define masks for the continuum fitting
-        feat_reg_mask = (waves > 6) & (waves <= 6.39)
+        feat_reg_mask = (waves > 6.15) & (waves <= 6.36)
+
         # feature region per star:
         # 6.14-6.39; 6.15-6.29; 5.94-6.41; 5.97-6.42; 5.99-6.36
         cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
@@ -1654,21 +1671,28 @@ def stack_spectra_62(datapath, stars, ext_table, bad_stars):
     ave_uncs = scipy.stats.sem(tau_list, axis=0)
     ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
 
-    # create a model with 2 Gaussians, based on the wavelengths and FWHMs from Chiar+2013, table 1
-    model_profile = multi_gauss_model(
-        np.array([0.15, 0.056]),
-        np.array([6.19, 6.25]),
-        fwhm_to_stddev(np.array([0.06, 0.16])),
+    # plot the fitted Chiar+2013 model with 2 Gaussians
+    chiar = Table.read(
+        "/Users/mdecleir/Documents/MEAD/Literature_data/gcs3_6mu_gaussianfit.dat",
+        format="ascii",
     )
-
-    # plot the Chiar model
-    ax.plot(waves, model_profile(waves) / 29, color="k", ls=":")
+    ax.plot(
+        chiar["micron"],
+        (chiar["olefinicgauss"] + chiar["pahgauss"]) / 29,
+        color="darkviolet",
+        ls=":",
+        lw=3,
+        label="Quintuplet (C13)",
+    )
 
     # find the peak value and its uncertainty
     max_ind = np.argmax(ave_taus)
-    print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
+    mask = waves < 6.25
+    max_ind = np.argmax(ave_taus[mask])
+    print("Peak wavelength:", waves[max_ind])
+    print("Peak tau/AV: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
     print(
-        "Peak: ",
+        "Peak AV/tau: ",
         1 / ave_taus[max_ind],
         1 / ave_taus[max_ind] - 1 / (ave_taus[max_ind] + ave_uncs[max_ind]),
         1 / (ave_taus[max_ind] - ave_uncs[max_ind]) - 1 / ave_taus[max_ind],
@@ -1678,6 +1702,8 @@ def stack_spectra_62(datapath, stars, ext_table, bad_stars):
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
     ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
     ax.axhline(c="k", ls=":", alpha=0.5)
+    ax.set_xlim(6.05, 6.46)
+    ax.set_ylim(-0.004, 0.01)
 
     # rename the previous version of the plot
     outname = datapath + "62_all.pdf"
@@ -1746,10 +1772,10 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
         # 2.735-2.781; 2.846-2.897; 3.013-3.060; 3.072-3.091; 3.274-3.323
 
         # rebin the spectrum, and select the relevant region
-        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (2.77, 3.29), 400)
+        waves, fluxes, uncs = rebin_constres(data[~stellar_mask], (2.7, 3.29), 400)
 
         # define masks for the continuum fitting
-        feat_reg_mask = (waves > 2.8) & (waves <= 3.26)
+        feat_reg_mask = (waves > 2.74) & (waves <= 3.23)
         cont_mask = ~feat_reg_mask & ~np.isnan(fluxes)
 
         # fit and plot the continuum, normalize the spectrum, calculate the optical depth and its uncertainty
@@ -1767,16 +1793,61 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
         # exclude star from the average, and plot it separately
         if star in exclude:
             fig2, ax2 = plt.subplots(figsize=(6, 6))
-            ax2.plot(waves, taus / ext_table["AV"][tab_mask], c="k")
-            ax2.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
-            ax2.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+            ax2.plot(waves, taus / ext_table["AV"][tab_mask], c="k", label=star)
+
+            max_ind = np.nanargmax(taus / ext_table["AV"][tab_mask])
             print(
                 star,
-                "peak: ",
+                "Peak wavelength:",
+                waves[max_ind],
+                "Peak tau/AV: ",
                 np.nanmax(taus / ext_table["AV"][tab_mask]),
                 " +- ",
                 unc / ext_table["AV"][tab_mask].value,
             )
+
+            # add ice profiles from Decleir+2022 for 2 dense sightlines
+            Drude_mod = custom_model(drude_modified)
+            HD029_profile = Drude_mod(
+                scale=0.03305712431358312 / 1.086,
+                x_o=3.021603941274231,
+                gamma_o=0.4878183911670602,
+                asym=-1.316061662998598,
+            )
+            HD283_profile = Drude_mod(
+                scale=0.02643756566455727 / 1.086,
+                x_o=3.013890393471433,
+                gamma_o=0.4373426133057677,
+                asym=-4.382664830198743,
+            )
+            lin_mod = Linear1D()
+            lin_fitter = LinearLSQFitter()
+            cont029 = lin_fitter(
+                lin_mod, waves[cont_mask], HD029_profile(waves)[cont_mask]
+            )
+            cont283 = lin_fitter(
+                lin_mod, waves[cont_mask], HD283_profile(waves)[cont_mask]
+            )
+            ax2.plot(
+                waves,
+                HD029_profile(waves) - cont029(waves),
+                color="darkviolet",
+                ls=":",
+                lw=1.5,
+                label="HD029647 (D22)",
+            )
+            ax2.plot(
+                waves,
+                HD283_profile(waves) - cont283(waves),
+                color="orange",
+                ls="--",
+                lw=1.5,
+                label="HD283809 (D22)",
+            )
+            ax2.axhline(c="k", ls=":", alpha=0.5)
+            ax2.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
+            ax2.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
+            ax2.legend(fontsize=0.7 * fs)
             fig2.savefig(datapath + star + "_30.pdf", bbox_inches="tight")
             continue
 
@@ -1792,13 +1863,47 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
     ave_taus = np.mean(tau_list, axis=0)
     ax.plot(waves, ave_taus, c="k", lw=3, label="mean")
 
+    # add ice profiles from Decleir+2022 for 2 diffuse sightlines
+    HD183_profile = Drude_mod(
+        scale=0.0026 / 1.086,
+        x_o=3.017747167372832,
+        gamma_o=0.46258050223641395,
+        asym=-2.8493632465986702,
+    )
+    HD229_profile = Drude_mod(
+        scale=0.0042 / 1.086,
+        x_o=3.017747167372832,
+        gamma_o=0.46258050223641395,
+        asym=-2.8493632465986702,
+    )
+    cont183 = lin_fitter(lin_mod, waves[cont_mask], HD183_profile(waves)[cont_mask])
+    cont229 = lin_fitter(lin_mod, waves[cont_mask], HD229_profile(waves)[cont_mask])
+
+    ax.plot(
+        waves,
+        HD183_profile(waves) - cont183(waves),
+        color="darkviolet",
+        ls=":",
+        lw=3,
+        label="HD183143 (D22)",
+    )
+    ax.plot(
+        waves,
+        HD229_profile(waves) - cont229(waves),
+        color="orange",
+        ls="--",
+        lw=3,
+        label="HD229238 (D22)",
+    )
+
     # calculate the uncertainties on the mean optical depths
     # standard error of the mean
     ave_uncs = scipy.stats.sem(tau_list, axis=0)
-    # ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
+    ax.plot(waves, ave_uncs, c="r", zorder=1, label="std. err. of mean")
 
     # find the peak value and its uncertainty
     max_ind = np.nanargmax(ave_taus)
+    print("Peak wavelength:", waves[max_ind])
     print("Peak: ", ave_taus[max_ind], " +- ", ave_uncs[max_ind])
 
     # add the calibration star P330-E
@@ -1831,20 +1936,21 @@ def stack_spectra_30(datapath, stars, ext_table, exclude):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
     plt.savefig(outname, bbox_inches="tight")
     # add to the main figure
-    ax.plot(waves, taus / 0.133, c="blue", zorder=1, label="P330-E")
+    # ax.plot(waves, taus / 0.133, c="blue", zorder=1, label="P330-E")
     # ax.plot(waves, taus, c="blue", zorder=1, label="P330-E")
 
     # finalize and save the figure
     ax.set_xlabel(r"$\lambda$ ($\mu$m)", fontsize=fs)
     ax.set_ylabel(r"$\tau(\lambda)/A(V)$", fontsize=fs)
     # ax.set_ylabel(r"$\tau(\lambda)$", fontsize=fs)
-
     ax.axhline(c="k", ls=":", alpha=0.5)
+    ax.set_ylim(-0.004, 0.01)
+
     # rename the previous version of the plot
     outname = datapath + "30_all.pdf"
     if os.path.isfile(outname):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
-    ax.legend(fontsize=0.8 * fs)
+    ax.legend(fontsize=0.7 * fs)
     fig.savefig(outname, bbox_inches="tight")
 
 
@@ -1899,7 +2005,7 @@ def main():
     fit_all(datapath, stars, sort_idx)
 
     # fit the feature for some dust grain models
-    # fit_grain_mod(datapath)
+    fit_grain_mod(datapath)
 
     # obtain the extinction properties
     ext_table = Table.read(
@@ -1908,16 +2014,16 @@ def main():
     )
 
     # stack the spectra around 3.4 micron
-    # stack_spectra_34(datapath, stars, ext_table)
-    #
-    # # stack the spectra around 6.2 micron
-    # stack_spectra_62(datapath, stars, ext_table, bad_stars)
+    stack_spectra_34(datapath, stars, ext_table)
+
+    # stack the spectra around 6.2 micron
+    stack_spectra_62(datapath, stars, ext_table, bad_stars)
 
     # define stars to be excluded from the stack
-    # exclude = ["HD073882"]
+    exclude = ["HD073882"]
 
     # stack the spectra around 3.0 micron
-    # stack_spectra_30(datapath, stars, ext_table, exclude)
+    stack_spectra_30(datapath, stars, ext_table, exclude)
 
 
 if __name__ == "__main__":
