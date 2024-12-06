@@ -16,7 +16,7 @@ from scipy.stats import spearmanr
 
 def calc_A1500(data):
     """
-    Function to calculate the absolute extinction at 1500 Angstrom
+    Function to calculate the absolute extinction at 1500 Angstrom, and its uncertainty
 
     Parameters
     ----------
@@ -25,8 +25,11 @@ def calc_A1500(data):
 
     Returns
     -------
-    A1500 : numpy.ndarray
+    A1500s : numpy.ndarray
         Absolute extinction at 1500 Angstrom for all stars
+
+    A1500_uncs : numpy.ndarray
+        Uncertainty on A1500 for all stars
     """
     # obtain the extinction curve model for every star
     ext_model = FM90(
@@ -42,9 +45,60 @@ def calc_A1500(data):
     E1500 = ext_model(1500 * u.Angstrom)
 
     # convert E(1500-V)/E(B-V) to A(1500)
+    # A1500 = E1500 * E(B-V) + A(V)
     A1500 = E1500 * data["EBV"].value + data["AV"].value
 
-    return A1500, 0.03 * A1500
+    # calculate the uncertainty on A(1500) using bootstrapping
+    A1500_uncs = []
+    # for every star
+    for row in data:
+        # obtain the FM90 and extinction parameters for this star
+        mean = (
+            row["C1"],
+            row["C2"],
+            row["C3"],
+            row["C4"],
+            row["xo"],
+            row["gamma"],
+            row["EBV"],
+            row["AV"],
+        )
+
+        # create a covariance matrix for the FM90 and extinction parameters
+        cov = np.zeros((8, 8))
+        cov[0, 0] = np.sqrt(row["C1_runc"] ** 2 + row["C1_sunc"] ** 2)
+        cov[1, 1] = np.sqrt(row["C2_runc"] ** 2 + row["C2_sunc"] ** 2)
+        cov[2, 2] = np.sqrt(row["C3_runc"] ** 2 + row["C3_sunc"] ** 2)
+        cov[3, 3] = np.sqrt(row["C4_runc"] ** 2 + row["C4_sunc"] ** 2)
+        cov[4, 4] = np.sqrt(row["xo_runc"] ** 2 + row["xo_sunc"] ** 2)
+        cov[5, 5] = np.sqrt(row["gamma_runc"] ** 2 + row["gamma_sunc"] ** 2)
+        cov[6, 6] = np.sqrt(row["EBV_runc"] ** 2 + row["EBV_sunc"] ** 2)
+        cov[7, 7] = np.sqrt(row["AV_runc"] ** 2 + row["AV_sunc"] ** 2)
+
+        # obtain a set of 1000 FM90 and extinction parameter combinations
+        FM90_set = np.random.multivariate_normal(mean=mean, cov=cov, size=1000)
+
+        # evaluate the FM90 extinction model for all parameter combinations
+        ext_model = FM90(
+            C1=FM90_set[:, 0],
+            C2=FM90_set[:, 1],
+            C3=FM90_set[:, 2],
+            C4=FM90_set[:, 3],
+            xo=FM90_set[:, 4],
+            gamma=FM90_set[:, 5],
+        )
+
+        # calculate E(1500-V)/E(B-V)
+        E1500_chain = ext_model(1500 * u.Angstrom)
+
+        # convert E(1500-V)/E(B-V) to A(1500)
+        # A1500 = E1500 * E(B-V) + A(V)
+        A1500_chain = E1500_chain * FM90_set[:, 6] + FM90_set[:, 7]
+
+        # calculate the standard deviation of the sample
+        A1500_uncs.append(np.std(A1500_chain))
+
+    return A1500, A1500_uncs
 
 
 def plot_feat(outpath, feat_name, data, bad_mask):
@@ -82,10 +136,16 @@ def plot_feat(outpath, feat_name, data, bad_mask):
     # ylabels = [r"$\tau(\lambda_0)$", r"FWHM ($\mu$m)", r"$\alpha$", r"area ($\mu$m)"]
 
     # without FWHM
-    xpars = ["x_0(micron)", "tau", "shape"]
-    xlabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$", r"$\alpha$"]
-    ypars = ["tau", "shape", "area(micron)"]
-    ylabels = [r"$\tau(\lambda_0)$", r"$\alpha$", r"area ($\mu$m)"]
+    # xpars = ["x_0(micron)", "tau", "shape"]
+    # xlabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$", r"$\alpha$"]
+    # ypars = ["tau", "shape", "area(micron)"]
+    # ylabels = [r"$\tau(\lambda_0)$", r"$\alpha$", r"area ($\mu$m)"]
+
+    # most compact plot
+    xpars = ["tau", "shape"]
+    xlabels = [r"$\tau(\lambda_0)$", r"$\alpha$"]
+    ypars = ["area(micron)", "x_0(micron)"]
+    ylabels = [r"area ($\mu$m)", r"$\lambda_0$ ($\mu$m)"]
 
     # create the figure
     fs = 20
@@ -211,26 +271,26 @@ def plot_sil_lit(outpath, data, bad_mask, lit_table):
 
     # plot the data
     ax.errorbar(
-        data["x_0(micron)"][~bad_mask],
         data["tau"][~bad_mask],
-        xerr=(
+        data["x_0(micron)"][~bad_mask],
+        xerr=(data["tau_unc_min"][~bad_mask], data["tau_unc_plus"][~bad_mask]),
+        yerr=(
             data["x_0_unc_min(micron)"][~bad_mask],
             data["x_0_unc_plus(micron)"][~bad_mask],
         ),
-        yerr=(data["tau_unc_min"][~bad_mask], data["tau_unc_plus"][~bad_mask]),
         fmt="ok",
         markeredgewidth=0,
         elinewidth=0.4,
         label="this work",
     )
     ax.errorbar(
-        data["x_0(micron)"][bad_mask],
         data["tau"][bad_mask],
-        xerr=(
+        data["x_0(micron)"][bad_mask],
+        xerr=(data["tau_unc_min"][bad_mask], data["tau_unc_plus"][bad_mask]),
+        yerr=(
             data["x_0_unc_min(micron)"][bad_mask],
             data["x_0_unc_plus(micron)"][bad_mask],
         ),
-        yerr=(data["tau_unc_min"][bad_mask], data["tau_unc_plus"][bad_mask]),
         fmt="ok",
         alpha=0.25,
         markeredgewidth=0,
@@ -239,10 +299,10 @@ def plot_sil_lit(outpath, data, bad_mask, lit_table):
 
     # add literature values
     ax.errorbar(
-        lit_table["lambda_o1"],
         lit_table["tau"],
-        xerr=(lit_table["lambda_o1_unc_min"], lit_table["lambda_o1_unc_plus"]),
-        yerr=(lit_table["tau_unc_min"], lit_table["tau_unc_plus"]),
+        lit_table["lambda_o1"],
+        xerr=(lit_table["tau_unc_min"], lit_table["tau_unc_plus"]),
+        yerr=(lit_table["lambda_o1_unc_min"], lit_table["lambda_o1_unc_plus"]),
         fmt="x",
         color="green",
         elinewidth=0.4,
@@ -288,10 +348,10 @@ def plot_sil_lit(outpath, data, bad_mask, lit_table):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
 
     # finalize and save the figure
-    ax.set_xlabel(r"$\lambda_0$ ($\mu$m)", fontsize=fs)
-    ax.set_ylabel(r"$\tau(\lambda_0)$", fontsize=fs)
+    ax.set_xlabel(r"$\tau(\lambda_0)$", fontsize=fs)
+    ax.set_ylabel(r"$\lambda_0$ ($\mu$m)", fontsize=fs)
     ax.tick_params(axis="both", labelsize=fs * 0.8)
-    plt.legend(bbox_to_anchor=(0.5, 0.0, 0.5, 0.87))
+    plt.legend()
     plt.savefig(outname, bbox_inches="tight")
 
 
@@ -318,19 +378,26 @@ def plot_feat_AV_RV(outpath, feat_name, data, bad_mask):
     Plots with feature properties vs. A(V), A(1500A) and R(V)
     """
     # define the parameters to be plotted
-    xpars = ["AV", "A1500", "RV"]
-    xlabels = ["$A(V)$", r"$A(1500\AA)$", "$R(V)$"]
-    # with FWHM
-    # ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)"]
+    # xpars = ["AV", "A1500", "RV"]
+    # xlabels = ["$A(V)$", r"$A(1500\AA)$", "$R(V)$"]
+    # with FWHM and shape
+    # ypars = ["x_0(micron)", "tau", "FWHM(micron)", "area(micron)", "shape"]
     # ylabels = [
     #     r"$\lambda_0$ ($\mu$m)",
     #     r"$\tau(\lambda_0)$",
     #     r"FWHM ($\mu$m)",
     #     r"area ($\mu$m)",
+    #     r"$\alpha$",
     # ]
-    # without FWHM
-    ypars = ["x_0(micron)", "tau", "area(micron)"]
-    ylabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
+    # without FWHM or shape
+    # ypars = ["x_0(micron)", "tau", "area(micron)"]
+    # ylabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
+
+    # most compact plot
+    xpars = ["AV", "A1500"]
+    xlabels = ["$A(V)$", r"$A(1500\AA)$"]
+    ypars = ["x_0(micron)", "tau"]
+    ylabels = [r"$\lambda_0$ ($\mu$m)", r"$\tau(\lambda_0)$"]
 
     # create the figure
     fs = 20
@@ -439,9 +506,14 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
     Plots with feature properties vs. A(V) and R(V) with literature data
     """
     # define the parameters to be plotted
-    xpars = ["AV", "RV"]
-    xpars_lit = ["A(V)", "R(V)"]
-    xlabels = ["$A(V)$", "$R(V)$"]
+    # with R(V)
+    # xpars = ["AV", "RV"]
+    # xpars_lit = ["A(V)", "R(V)"]
+    # xlabels = ["$A(V)$", "$R(V)$"]
+    # without R(V)
+    xpars = ["AV"]
+    xpars_lit = ["A(V)"]
+    xlabels = ["$A(V)$"]
     ypars = ["x_0(micron)", "tau"]
     ypars_lit = ["lambda_o1", "tau"]
     ylabels = [
@@ -461,9 +533,18 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
 
     for i, (xpar, xpar_lit, xlabel) in enumerate(zip(xpars, xpars_lit, xlabels)):
         # add the x-axis label
-        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+        if len(xpars) == 1:
+            ax = axes[-1]
+        else:
+            ax = axes[-1, i]
+        ax.set_xlabel(xlabel, fontsize=fs)
 
         for j, (ypar, ypar_lit, ylabel) in enumerate(zip(ypars, ypars_lit, ylabels)):
+            if len(xpars) == 1:
+                ax = axes[j]
+            else:
+                ax = axes[j, i]
+
             # obtain the y-axis uncertainties
             if "(" in ypar:
                 index = ypar.find("(")
@@ -475,7 +556,7 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
             # plot the data
-            handle1 = axes[j, i].errorbar(
+            handle1 = ax.errorbar(
                 data[xpar][~bad_mask],
                 data[ypar][~bad_mask],
                 xerr=data[xpar + "_unc"][~bad_mask],
@@ -484,7 +565,7 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
                 markeredgewidth=0,
                 elinewidth=0.4,
             )
-            axes[j, i].errorbar(
+            ax.errorbar(
                 data[xpar][bad_mask],
                 data[ypar][bad_mask],
                 xerr=data[xpar + "_unc"][bad_mask],
@@ -496,7 +577,7 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
                 label="this work",
             )
             # add literature data
-            handle2 = axes[j, i].errorbar(
+            handle2 = ax.errorbar(
                 lit_table[xpar_lit],
                 lit_table[ypar_lit],
                 xerr=(
@@ -514,34 +595,34 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
             )
 
             # calculate the Spearman correlation coefficient
-            axes[j, i].text(
+            ax.text(
                 0.05,
                 0.92,
                 r"$\rho = %.2f$"
                 % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
-                transform=axes[j, i].transAxes,
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
             )
-            axes[j, i].text(
+            ax.text(
                 0.05,
                 0.85,
                 r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
-                transform=axes[j, i].transAxes,
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
                 alpha=0.25,
             )
-            axes[j, i].tick_params(axis="both", labelsize=fs * 0.8)
+            ax.tick_params(axis="both", labelsize=fs * 0.8)
 
             # add literature values
             xs = np.concatenate((data[xpar], lit_table[xpar_lit]))
             ys = np.concatenate((data[ypar], lit_table[ypar_lit]))
-            axes[j, i].text(
+            ax.text(
                 0.05,
                 0.78,
                 r"$\rho = %.2f$" % spearmanr(xs, ys)[0],
-                transform=axes[j, i].transAxes,
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
                 color="green",
@@ -549,7 +630,7 @@ def plot_feat_AV_RV_lit(outpath, feat_name, data, bad_mask, lit_table):
 
             # add the y-axis label (once)
             if i == 0:
-                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+                ax.set_ylabel(ylabel, fontsize=fs)
 
     # rename the previous version of the plot
     outname = outpath + feat_name + "_AV_RV_lit.pdf"
@@ -889,9 +970,14 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
     """
     # define the parameters to be plotted
     # with f(H2)
-    # xpars = ["logNH", "logNHI", "logNH2", "fH2"]
-    # xlabels = ["log(N(H))", "log(N(HI))", "log(N(H$_2$))", "f(H$_2$) = 2N(H$_2$)/N(H)"]
-    # with tau/AV, lambda_0 and FWHM, area/AV
+    xpars = ["logNH", "logNHI", "logNH2", "fH2"]
+    xlabels = [
+        r"$\text{log}(N(\text{H}))$",
+        r"$\text{log}(N(\text{HI}))$",
+        r"$\text{log}(N(\text{H}_2))$",
+        r"$f(\text{H}_2) = 2N(\text{H}_2)/N(\text{H})$",
+    ]
+    # with tau/AV, lambda_0 and FWHM, area and area/AV
     # ypars = ["tau", "tau/AV", "x_0(micron)", "FWHM(micron)", "area(micron)", "area/AV"]
     # ylabels = [
     #     r"$\tau(\lambda_0)$",
@@ -901,12 +987,9 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
     #     r"area ($\mu$m)",
     #     r"area/$A(V)$ ($\mu$m)",
     # ]
-    # without f(H2)
-    xpars = ["logNH", "logNHI", "logNH2"]
-    xlabels = ["log(N(H))", "log(N(HI))", "log(N(H$_2$))"]
-    # without tau/AV, lambda_0 and FWHM, area/AV
-    ypars = ["tau", "area(micron)"]
-    ylabels = [r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
+    # only tau
+    ypars = ["tau"]
+    ylabels = [r"$\tau(\lambda_0)$"]
 
     # create the figure
     fs = 20
@@ -922,7 +1005,11 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # add the x-axis label
-        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+        if len(ypars) == 1:
+            ax = axes[i]
+        else:
+            ax = axes[-1, i]
+        ax.set_xlabel(xlabel, fontsize=fs)
 
         for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
             # obtain the y-axis uncertainties
@@ -935,8 +1022,13 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
             else:
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
 
+            if len(ypars) == 1:
+                ax = axes[i]
+            else:
+                ax = axes[j, i]
+
             # plot the data
-            axes[j, i].errorbar(
+            ax.errorbar(
                 data[xpar][~bad_mask],
                 data[ypar][~bad_mask],
                 xerr=data["e_" + xpar][~bad_mask],
@@ -945,7 +1037,7 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
                 markeredgewidth=0,
                 elinewidth=0.4,
             )
-            axes[j, i].errorbar(
+            ax.errorbar(
                 data[xpar][bad_mask],
                 data[ypar][bad_mask],
                 xerr=data["e_" + xpar][bad_mask],
@@ -957,21 +1049,21 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
             )
 
             # calculate the Spearman correlation coefficient
-            axes[j, i].text(
+            ax.text(
                 0.05,
                 0.9,
                 r"$\rho = %.2f$"
                 % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
-                transform=axes[j, i].transAxes,
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
             )
 
-            axes[j, i].text(
+            ax.text(
                 0.05,
                 0.82,
                 r"$\rho = %.2f$" % spearmanr(data[xpar], data[ypar])[0],
-                transform=axes[j, i].transAxes,
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
                 alpha=0.25,
@@ -979,7 +1071,7 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
 
             # add the y-axis label (once)
             if i == 0:
-                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+                ax.set_ylabel(ylabel, fontsize=fs)
 
     # rename the previous version of the plot
     outname = outpath + feat_name + "_H.pdf"
@@ -991,7 +1083,7 @@ def plot_feat_H(outpath, feat_name, data, bad_mask):
     fig.savefig(outname, bbox_inches="tight")
 
 
-def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
+def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table, lit_table):
     """
     Function to plot the feature properties vs. the dust column densities and ratios
 
@@ -1012,6 +1104,9 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     grmod_table : astropy Table
         Data from grain models
 
+    lit_table : astropy Table
+        Literature measurements
+
     Returns
     -------
     Plots with feature properties vs. dust column densities and ratios
@@ -1029,8 +1124,12 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     # ]
     # without the ratios
     xpars = ["N(Mg)_d", "N(Fe)_d", "N(O)_d"]
-    xlabels = ["N(Mg)$_{dust}$", "N(Fe)$_{dust}$", "N(O)$_{dust}$"]
-    # with lambda_0 and FWHM
+    xlabels = [
+        r"$N(\text{Mg})_{\text{dust}}$",
+        r"$N(\text{Fe})_{\text{dust}}$",
+        r"$N(\text{O})_{\text{dust}}$",
+    ]
+    # with lambda_0, FWHM and area
     # ypars = ["tau", "x_0(micron)", "FWHM(micron)", "area(micron)"]
     # ylabels = [
     #     r"$\tau(\lambda_0)$",
@@ -1038,9 +1137,9 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
     #     r"FWHM ($\mu$m)",
     #     r"area ($\mu$m)",
     # ]
-    # without lambda_0 and FWHM
-    ypars = ["tau", "area(micron)"]
-    ylabels = [r"$\tau(\lambda_0)$", r"area ($\mu$m)"]
+    # only tau
+    ypars = ["tau"]
+    ylabels = [r"$\tau(\lambda_0)$"]
 
     # create the figure
     fs = 20
@@ -1054,15 +1153,24 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
         sharey="row",
     )
 
-    # entirely remove bad star
+    # entirely remove bad star when plotting measured data
     del_mask = data["name"] == "HD014434"
+
+    # combine the measured silicate feature properties with the literature dust column densities
+    lit_data = join(data, lit_table, keys="star", table_names=["mead", "lit"])
+    # grey out the bad star in the literature data
+    lit_mask = lit_data["name"] == "HD014434"
 
     # create a new table
     table_slopes = Table()
 
     for i, (xpar, xlabel) in enumerate(zip(xpars, xlabels)):
         # add the x-axis label
-        axes[-1, i].set_xlabel(xlabel, fontsize=fs)
+        if len(ypars) == 1:
+            ax = axes[i]
+        else:
+            ax = axes[-1, i]
+        ax.set_xlabel(xlabel, fontsize=fs)
 
         for j, (ypar, ylabel) in enumerate(zip(ypars, ylabels)):
             # obtain the y-axis uncertainties
@@ -1072,75 +1180,166 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
                     data[ypar[:index] + "_unc_min" + ypar[index:]],
                     data[ypar[:index] + "_unc_plus" + ypar[index:]],
                 )
+                yunc_lit = (
+                    lit_data[ypar[:index] + "_unc_min" + ypar[index:]],
+                    lit_data[ypar[:index] + "_unc_plus" + ypar[index:]],
+                )
             else:
                 yunc = data[ypar + "_unc_min"], data[ypar + "_unc_plus"]
+                yunc_lit = lit_data[ypar + "_unc_min"], lit_data[ypar + "_unc_plus"]
 
-            # plot the data
-            axes[j, i].errorbar(
-                data[xpar][~bad_mask],
-                data[ypar][~bad_mask],
-                yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
+            if len(ypars) == 1:
+                ax = axes[i]
+            else:
+                ax = axes[j, i]
+
+            # plot the measured data
+            # axes[j, i].errorbar(
+            #     data[xpar][~bad_mask],
+            #     data[ypar][~bad_mask],
+            #     yerr=(yunc[0][~bad_mask], yunc[1][~bad_mask]),
+            #     fmt="ok",
+            #     markeredgewidth=0,
+            #     elinewidth=0.4,
+            # )
+            # axes[j, i].errorbar(
+            #     data[xpar][bad_mask & ~del_mask],
+            #     data[ypar][bad_mask & ~del_mask],
+            #     yerr=(yunc[0][bad_mask & ~del_mask], yunc[1][bad_mask & ~del_mask]),
+            #     fmt="ok",
+            #     markeredgewidth=0,
+            #     alpha=0.25,
+            #     elinewidth=0.4,
+            # )
+
+            # plot the literature data
+            ax.errorbar(
+                lit_data[xpar + "_lit"][~lit_mask],
+                lit_data[ypar][~lit_mask],
+                xerr=(
+                    lit_data[xpar + "_munc"][~lit_mask],
+                    lit_data[xpar + "_punc"][~lit_mask],
+                ),
+                yerr=(yunc_lit[0][~lit_mask], yunc_lit[1][~lit_mask]),
                 fmt="ok",
                 markeredgewidth=0,
                 elinewidth=0.4,
             )
-            axes[j, i].errorbar(
-                data[xpar][bad_mask & ~del_mask],
-                data[ypar][bad_mask & ~del_mask],
-                yerr=(yunc[0][bad_mask & ~del_mask], yunc[1][bad_mask & ~del_mask]),
+            ax.errorbar(
+                lit_data[xpar + "_lit"][lit_mask],
+                lit_data[ypar][lit_mask],
+                xerr=(
+                    lit_data[xpar + "_munc"][lit_mask],
+                    lit_data[xpar + "_punc"][lit_mask],
+                ),
+                yerr=(yunc_lit[0][lit_mask], yunc_lit[1][lit_mask]),
                 fmt="ok",
                 markeredgewidth=0,
                 alpha=0.25,
                 elinewidth=0.4,
             )
 
-            # calculate the Spearman correlation coefficient
-            axes[j, i].text(
+            # calculate the Spearman correlation coefficient for the measured data
+            # axes[j, i].text(
+            #     0.05,
+            #     0.9,
+            #     r"$\rho = %.2f$"
+            #     % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
+            #     transform=axes[j, i].transAxes,
+            #     fontsize=fs * 0.8,
+            #     ha="left",
+            # )
+            # axes[j, i].text(
+            #     0.05,
+            #     0.82,
+            #     r"$\rho = %.2f$"
+            #     % spearmanr(data[xpar][~del_mask], data[ypar][~del_mask])[0],
+            #     transform=axes[j, i].transAxes,
+            #     fontsize=fs * 0.8,
+            #     ha="left",
+            #     alpha=0.25,
+            # )
+            # calculate the Spearman correlation coefficient for the literature data
+            nan_mask = np.isnan(lit_data[xpar + "_lit"])
+            ax.text(
                 0.05,
                 0.9,
                 r"$\rho = %.2f$"
-                % spearmanr(data[xpar][~bad_mask], data[ypar][~bad_mask])[0],
-                transform=axes[j, i].transAxes,
+                % spearmanr(
+                    lit_data[xpar + "_lit"][~nan_mask & ~lit_mask],
+                    lit_data[ypar][~nan_mask & ~lit_mask],
+                )[0],
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
             )
-            axes[j, i].text(
+            ax.text(
                 0.05,
                 0.82,
                 r"$\rho = %.2f$"
-                % spearmanr(data[xpar][~del_mask], data[ypar][~del_mask])[0],
-                transform=axes[j, i].transAxes,
+                % spearmanr(
+                    lit_data[xpar + "_lit"][~nan_mask],
+                    lit_data[ypar][~nan_mask],
+                )[0],
+                transform=ax.transAxes,
                 fontsize=fs * 0.8,
                 ha="left",
                 alpha=0.25,
             )
 
             # fit the data with a line
-            fitter = LinearLSQFitter()
+            fitter = LinearLSQFitter(calc_uncertainties=True)
             line_mod = Linear1D()
-            xs = data[xpar][~del_mask] * 1e-17
-            ys = data[ypar][~del_mask]
+            line_mod_0 = Linear1D(intercept=0, fixed={"intercept": True})
+
+            # measured data
+            # xs = data[xpar][~del_mask] * 1e-17
+            # ys = data[ypar][~del_mask]
+            # literature data
+            xs = lit_data[xpar + "_lit"][~nan_mask & ~lit_mask] * 1e-17
+            ys = lit_data[ypar][~nan_mask & ~lit_mask]
             fitted_line = fitter(line_mod, xs, ys)
-            axes[j, i].plot(xs * 1e17, fitted_line(xs), c="k", label="data")
-            axes[j, i].text(
+            fitted_line_0 = fitter(line_mod_0, xs, ys)
+            # measured data
+            # axes[j, i].plot(xs * 1e17, fitted_line(xs), c="k")
+            # literature data
+            xs_plot = np.arange(np.min(xs) * 0.9, np.max(xs) * 1.1, 0.1)
+            ax.plot(xs_plot * 1e17, fitted_line(xs_plot), c="k", label="data")
+            ax.plot(
+                xs_plot * 1e17,
+                fitted_line_0(xs_plot),
+                c="grey",
+                label="int.=0",
+                lw=0.5,
+                ls=":",
+            )
+            ax.text(
                 0.4,
                 0.9,
                 r"y=%.1ex+%.2f"
-                % (fitted_line.slope.value * 1e-17, fitted_line.intercept.value),
-                transform=axes[j, i].transAxes,
+                % (
+                    fitted_line.slope.value * 1e-17,
+                    fitted_line.intercept.value,
+                ),
+                transform=ax.transAxes,
                 fontsize=fs * 0.7,
             )
+            # ax.text(
+            #     0.5,
+            #     0.1,
+            #     r"%.3f / %.5f "
+            #     % (fitted_line.intercept.std, fitter.fit_info["residuals"]),
+            #     transform=ax.transAxes,
+            #     fontsize=fs * 0.7,
+            # )
 
             # create a list for the slopes
             slope_list = [fitted_line.slope.value * 1e-17]
 
-            # calculate the x-value for y=0: y=ax+b --> x0=-b/a
-            zeropoint = -fitted_line.intercept / fitted_line.slope
-
             # add dust grain models
             for model in grmod_table:
                 AVs = np.array([1.2, 2.5])
-                axes[j, i].plot(
+                ax.plot(
                     model[xpar.replace("_d", "/AV")] * AVs,
                     model[ypar] * AVs,
                     label=model["model"],
@@ -1149,14 +1348,12 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
 
             # save the slopes to the table
             table_slopes[
-                ypar.replace("(micron)", "").replace("tau", r"$\tau$")
-                + "/"
-                + xpar.replace("_d", "")
+                ypar.replace("(micron)", "") + "/" + xpar.replace("_d", "")
             ] = slope_list
 
             # add the y-axis label (once)
             if i == 0:
-                axes[j, 0].set_ylabel(ylabel, fontsize=fs)
+                ax.set_ylabel(ylabel, fontsize=fs)
 
     # rename the previous version of the plot
     outname = outpath + feat_name + "_dcol.pdf"
@@ -1164,62 +1361,64 @@ def plot_feat_dcol(outpath, feat_name, data, bad_mask, grmod_table):
         os.rename(outname, outname.split(".")[0] + "_0.pdf")
 
     # finalize and save the figure
-    axes[-1, -1].legend(loc=4, fontsize=fs * 0.7)
+    if len(ypars) == 1:
+        ax = axes[-1]
+    else:
+        ax = axes[-1, -1]
+    ax.legend(loc=4, fontsize=fs * 0.65, labelspacing=0.3)
     fig.subplots_adjust(hspace=0, wspace=0)
     fig.savefig(outname, bbox_inches="tight")
 
     # calculate the ratios of the slopes
-    table_slopes["N(Mg)/N(Fe)"] = (
-        table_slopes["area/N(Fe)"] / table_slopes["area/N(Mg)"]
-    )
-    table_slopes["N(Mg)/N(O)"] = table_slopes["area/N(O)"] / table_slopes["area/N(Mg)"]
-    table_slopes["N(Fe)/N(O)"] = table_slopes["area/N(O)"] / table_slopes["area/N(Fe)"]
-    table_slopes["Mg:Fe:O"] = [
-        "%.1f" % table_slopes["N(Mg)/N(Fe)"][0]
-        + ":1:"
-        + "%.1f" % (1 / table_slopes["N(Fe)/N(O)"][0]),
-        str(round(table_slopes["N(Mg)/N(Fe)"][1]))
-        + ":1:"
-        + str(round(1 / table_slopes["N(Fe)/N(O)"][1])),
-        str(round(table_slopes["N(Mg)/N(Fe)"][2]))
-        + ":1:"
-        + str(round(1 / table_slopes["N(Fe)/N(O)"][2])),
-        "%.1f" % table_slopes["N(Mg)/N(Fe)"][3]
-        + ":1:"
-        + str(round(1 / table_slopes["N(Fe)/N(O)"][3])),
+    table_slopes["N(Mg)/N(Fe)"] = table_slopes["tau/N(Fe)"] / table_slopes["tau/N(Mg)"]
+    table_slopes["N(Mg)/N(O)"] = table_slopes["tau/N(O)"] / table_slopes["tau/N(Mg)"]
+    table_slopes["N(Fe)/N(O)"] = table_slopes["tau/N(O)"] / table_slopes["tau/N(Fe)"]
+    table_slopes["Mg"] = [
+        "%.1f" % table_slopes["N(Mg)/N(Fe)"][0],
+        str(round(table_slopes["N(Mg)/N(Fe)"][1])),
+        str(round(table_slopes["N(Mg)/N(Fe)"][2])),
+        "%.1f" % table_slopes["N(Mg)/N(Fe)"][3],
+        "%.1f" % table_slopes["N(Mg)/N(Fe)"][4],
     ]
-    MgFe_t = table_slopes[r"$\tau$/N(Fe)"][0] / table_slopes[r"$\tau$/N(Mg)"][0]
-    MgO_t = table_slopes[r"$\tau$/N(O)"][0] / table_slopes[r"$\tau$/N(Mg)"][0]
-    FeO_t = table_slopes[r"$\tau$/N(O)"][0] / table_slopes[r"$\tau$/N(Fe)"][0]
+    table_slopes["Fe"] = [1, 1, 1, 1, 1]
+    table_slopes["O"] = [
+        "%.1f" % (1 / table_slopes["N(Fe)/N(O)"][0]),
+        str(round(1 / table_slopes["N(Fe)/N(O)"][1])),
+        str(round(1 / table_slopes["N(Fe)/N(O)"][2])),
+        "%.1f" % (1 / table_slopes["N(Fe)/N(O)"][3]),
+        str(round(1 / table_slopes["N(Fe)/N(O)"][4])),
+    ]
 
     # write the table to a file
     table_slopes.add_column(["data", *grmod_table["model"]], name="Line", index=0)
     table_slopes.write(
-        outpath + "grain_models.tex",
+        outpath + "stoichiometries.tex",
         format="aastex",
-        col_align="l|cccccccccc",
+        col_align="l|ccccccr@{ :}c@{: }l",
         latexdict={
             "tabletype": "deluxetable*",
             "caption": r"Slopes of lines in Fig.~\ref{fig:feat_dcol} for the fitted line to the data points, and for the dust grain models, and ratios between slopes. \label{tab:grmods}",
-            "tablefoot": r"\tablenotetext{*}{These values are derived from the slopes of integrated area vs. column density. The values for $\tau$ are very similar: "
-            + "%.2f" % MgFe_t
-            + ", "
-            + "%.2f" % MgO_t
-            + ", and "
-            + "%.2f" % FeO_t
-            + " for N(Mg)/N(Fe), N(Mg)/N(O), and N(Fe)/N(O), respectively.}",
         },
         formats={
-            r"$\tau$/N(Mg)": "%.1e",
-            r"$\tau$/N(Fe)": "%.1e",
-            r"$\tau$/N(O)": "%.1e",
-            "area/N(Mg)": "%.1e",
-            "area/N(Fe)": "%.1e",
-            "area/N(O)": "%.1e",
-            "N(Mg)/N(Fe)": ".2f",
-            "N(Mg)/N(O)": ".2f",
-            "N(Fe)/N(O)": ".2f",
+            r"$\tau/N$(Mg)": "%.1e",
+            r"$\tau/N$(Fe)": "%.1e",
+            r"$\tau/N$(O)": "%.1e",
+            r"$N$(Mg)/$N$(Fe)": ".2f",
+            r"$N$(Mg)/$N$(O)": ".2f",
+            r"$N$(Fe)/$N$(O)": ".2f",
         },
+        names=[
+            "line",
+            r"$\tau/N$(Mg)",
+            r"$\tau/N$(Fe)",
+            r"$\tau/N$(O)",
+            r"$N$(Mg)/$N$(Fe)",
+            r"$N$(Mg)/$N$(O)",
+            r"$N$(Fe)/$N$(O)",
+            "Mg :",
+            " Fe :",
+            "O",
+        ],
         overwrite=True,
     )
 
@@ -1378,9 +1577,12 @@ def calc_ave(data):
     )
     print("Median area: ", np.median(data["area(micron)"]))
     print("Median alpha: ", np.median(data["shape"]))
-
     print("Median tau/AV: ", np.median(data["tau/AV"]))
-    print("Median AV/tau: ", np.median(1 / data["tau/AV"]))
+    print(
+        "Median and standard deviation AV/tau: ",
+        np.median(1 / data["tau/AV"]),
+        np.std(1 / data["tau/AV"]),
+    )
 
 
 def main():
@@ -1428,7 +1630,7 @@ def main():
     )
 
     # calculate A(1500 Angstrom)
-    joined_all_10["A1500"], joined_all_10["A1500_unc"] = calc_A1500(joined_all_10)
+    (joined_all_10["A1500"], joined_all_10["A1500_unc"]) = calc_A1500(joined_all_10)
 
     # calculate normalized optical depth and area, and uncertainties
     joined_all_10["tau/AV"] = joined_all_10["tau"] / joined_all_10["AV"]
@@ -1457,10 +1659,16 @@ def main():
         * np.sqrt(joined_all_10["e_logNH2"] ** 2 + joined_all_10["e_logNH"] ** 2)
     )
 
+    # obtain literature dust column densities
+    dcol_table = Table.read(litpath + "lit_dcols.dat", format="ascii")
+
     # calculate dust column density ratios and normalized dust column densities
     joined_all_10["N(Mg)/N(Fe)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(Fe)_d"]
     joined_all_10["N(Mg)/N(O)"] = joined_all_10["N(Mg)_d"] / joined_all_10["N(O)_d"]
     joined_all_10["N(Fe)/N(O)"] = joined_all_10["N(Fe)_d"] / joined_all_10["N(O)_d"]
+    dcol_table["N(Mg)/N(Fe)"] = dcol_table["N(Mg)_d"] / dcol_table["N(Fe)_d"]
+    dcol_table["N(Mg)/N(O)"] = dcol_table["N(Mg)_d"] / dcol_table["N(O)_d"]
+    dcol_table["N(Fe)/N(O)"] = dcol_table["N(Fe)_d"] / dcol_table["N(O)_d"]
     joined_all_10["N(Mg)/AV"] = joined_all_10["N(Mg)_d"] / joined_all_10["AV"]
     joined_all_10["N(Fe)/AV"] = joined_all_10["N(Fe)_d"] / joined_all_10["AV"]
     joined_all_10["N(O)/AV"] = joined_all_10["N(O)_d"] / joined_all_10["AV"]
@@ -1499,7 +1707,7 @@ def main():
         grmod_table["Fe"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
     )
     grmod_table["N(O)/AV"] = grmod_table["O"] * 1e-6 * grmod_table["N(H)/E(B-V)"] / 3.1
-    grmod_table = grmod_table[[0, 2, 1]]
+    grmod_table = grmod_table[[0, 3, 1, 2]]
 
     # define the stars that should be masked
     bad_stars = ["HD014434", "HD038087"]
@@ -1526,7 +1734,7 @@ def main():
     plot_feat_H(outpath, "10", joined_all_10, bad_mask)
 
     # create plots vs. dust column densities
-    plot_feat_dcol(outpath, "10", joined_all_10, bad_mask, grmod_table)
+    plot_feat_dcol(outpath, "10", joined_all_10, bad_mask, grmod_table, dcol_table)
     plot_feat_norm_dcol(outpath, "10", joined_all_10, bad_mask)
 
 
